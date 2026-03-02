@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { generateDebrief } from "@/lib/anthropic";
+import { sendDebriefEmail } from "@/lib/email";
 
 export async function POST(req: NextRequest) {
   try {
@@ -50,6 +51,18 @@ export async function POST(req: NextRequest) {
     await sql`
       UPDATE sessions SET status = 'completed', updated_at = NOW() WHERE id = ${sessionId}
     `;
+
+    // Send debrief email (non-fatal if it fails)
+    await sendDebriefEmail(
+      {
+        role:       session.role,
+        company:    session.company,
+        round_type: session.round_type,
+        yoe:        session.yoe,
+        user_email: session.user_email,
+      },
+      debrief
+    );
 
     return NextResponse.json({ debrief: inserted[0] });
   } catch (err) {

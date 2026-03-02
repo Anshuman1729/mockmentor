@@ -54,13 +54,17 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     };
   }, []);
 
-  // ── Camera ───────────────────────────────────────────────────────────────────
+  // ── Camera + mic permission ───────────────────────────────────────────────────
+  // Request audio alongside video so the browser grants mic permission upfront.
+  // Audio tracks are stopped immediately — SpeechRecognition manages the mic.
   useEffect(() => {
     let mounted = true;
     navigator.mediaDevices
-      .getUserMedia({ video: true, audio: false })
+      .getUserMedia({ video: true, audio: true })
       .then((stream) => {
         if (!mounted) { stream.getTracks().forEach((t) => t.stop()); return; }
+        // Release audio tracks; keep only video for the camera tile
+        stream.getAudioTracks().forEach((t) => t.stop());
         streamRef.current = stream;
         if (videoRef.current) videoRef.current.srcObject = stream;
         setCameraAllowed(true);
@@ -71,6 +75,16 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       streamRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
+
+  // ── Auto-start STT when entering listening state ────────────────────────────
+  // This useEffect avoids the stale-closure bug: the mount effect captures the
+  // initial fetchNextQuestion (where sttSupported is still false). Instead we
+  // watch roomState here with live deps so STT always starts reliably.
+  useEffect(() => {
+    if (roomState === "listening" && sttSupported && !isListening) {
+      startSTT();
+    }
+  }, [roomState, sttSupported, isListening, startSTT]);
 
   // ── Fetch question → speak → listen ─────────────────────────────────────────
   const fetchNextQuestion = useCallback(async () => {
@@ -112,12 +126,11 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       setRoomState("speaking");
       await speak(q.question);
       setRoomState("listening");
-      if (sttSupported) startSTT();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
       setRoomState("listening");
     }
-  }, [sessionId, router, speak, sttSupported, startSTT, resetSTT]);
+  }, [sessionId, router, speak, resetSTT]);
 
   // Load first question on mount
   useEffect(() => {
@@ -158,7 +171,6 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     resetSTT();
     setFallbackText("");
     setRoomState("listening");
-    if (sttSupported) startSTT();
   }
 
   // ── Re-speak ─────────────────────────────────────────────────────────────────
@@ -168,7 +180,6 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     setRoomState("speaking");
     await speak(current.question);
     setRoomState("listening");
-    if (sttSupported) startSTT();
   }
 
   const progressValue = current
