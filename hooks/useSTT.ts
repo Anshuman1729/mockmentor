@@ -3,9 +3,47 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 declare global {
+  interface SpeechRecognitionResultItem {
+    readonly transcript: string;
+    readonly confidence: number;
+  }
+  interface SpeechRecognitionResult {
+    readonly isFinal: boolean;
+    readonly length: number;
+    item(index: number): SpeechRecognitionResultItem;
+    [index: number]: SpeechRecognitionResultItem;
+  }
+  interface SpeechRecognitionResultList {
+    readonly length: number;
+    item(index: number): SpeechRecognitionResult;
+    [index: number]: SpeechRecognitionResult;
+  }
+  interface SpeechRecognitionEvent extends Event {
+    readonly resultIndex: number;
+    readonly results: SpeechRecognitionResultList;
+  }
+  interface SpeechRecognitionErrorEvent extends Event {
+    readonly error: string;
+  }
+  interface SpeechRecognition extends EventTarget {
+    continuous: boolean;
+    interimResults: boolean;
+    lang: string;
+    maxAlternatives: number;
+    onresult: ((event: SpeechRecognitionEvent) => void) | null;
+    onstart: (() => void) | null;
+    onend: (() => void) | null;
+    onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+    start(): void;
+    stop(): void;
+    abort(): void;
+  }
+  interface SpeechRecognitionConstructor {
+    new(): SpeechRecognition;
+  }
   interface Window {
-    SpeechRecognition: typeof SpeechRecognition;
-    webkitSpeechRecognition: typeof SpeechRecognition;
+    SpeechRecognition: SpeechRecognitionConstructor;
+    webkitSpeechRecognition: SpeechRecognitionConstructor;
   }
 }
 
@@ -20,7 +58,7 @@ export function useSTT() {
   // Sync ref — never stale in callbacks
   const isListeningRef = useRef(false);
   // The SR class itself, set once on mount
-  const SRClassRef = useRef<typeof SpeechRecognition | null>(null);
+  const SRClassRef = useRef<SpeechRecognitionConstructor | null>(null);
 
   useEffect(() => {
     const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
