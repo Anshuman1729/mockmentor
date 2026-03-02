@@ -369,7 +369,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
           <Button
             size="sm"
             onClick={handleSubmit}
-            disabled={!canSubmit || roomState === "submitting"}
+            disabled={roomState === "submitting" || !canSubmit}
             className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white px-6 h-8"
           >
             {roomState === "submitting" ? (
