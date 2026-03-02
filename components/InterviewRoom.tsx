@@ -54,17 +54,13 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     };
   }, []);
 
-  // ── Camera + mic permission ───────────────────────────────────────────────────
-  // Request audio alongside video so the browser grants mic permission upfront.
-  // Audio tracks are stopped immediately — SpeechRecognition manages the mic.
+  // ── Camera ───────────────────────────────────────────────────────────────────
   useEffect(() => {
     let mounted = true;
     navigator.mediaDevices
-      .getUserMedia({ video: true, audio: true })
+      .getUserMedia({ video: true, audio: false })
       .then((stream) => {
         if (!mounted) { stream.getTracks().forEach((t) => t.stop()); return; }
-        // Release audio tracks; keep only video for the camera tile
-        stream.getAudioTracks().forEach((t) => t.stop());
         streamRef.current = stream;
         if (videoRef.current) videoRef.current.srcObject = stream;
         setCameraAllowed(true);
@@ -76,10 +72,10 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     };
   }, []);
 
-  // ── Auto-start STT when entering listening state ────────────────────────────
-  // This useEffect avoids the stale-closure bug: the mount effect captures the
-  // initial fetchNextQuestion (where sttSupported is still false). Instead we
-  // watch roomState here with live deps so STT always starts reliably.
+  // ── STT safety net ───────────────────────────────────────────────────────────
+  // Primary STT start happens via explicit startSTT() calls in fetchNextQuestion,
+  // handleRetry, and handleRespeak. This effect is a secondary safety net that
+  // restarts STT if it drops mid-listening (e.g. Android no-speech timeout).
   useEffect(() => {
     if (roomState === "listening" && sttSupported && !isListening) {
       startSTT();
@@ -126,11 +122,13 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       setRoomState("speaking");
       await speak(q.question);
       setRoomState("listening");
+      startSTT(); // start() guards internally — no-op if unsupported
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
       setRoomState("listening");
+      startSTT();
     }
-  }, [sessionId, router, speak, resetSTT]);
+  }, [sessionId, router, speak, resetSTT, startSTT]);
 
   // Load first question on mount
   useEffect(() => {
@@ -171,6 +169,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     resetSTT();
     setFallbackText("");
     setRoomState("listening");
+    startSTT();
   }
 
   // ── Re-speak ─────────────────────────────────────────────────────────────────
@@ -180,6 +179,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     setRoomState("speaking");
     await speak(current.question);
     setRoomState("listening");
+    startSTT();
   }
 
   const progressValue = current
