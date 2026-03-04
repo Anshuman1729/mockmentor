@@ -28,7 +28,6 @@ const ROUND_TYPES = [
 export default function SetupForm() {
   const router = useRouter();
   const [form, setForm] = useState({
-    user_email: "",
     role: "",
     company: "",
     yoe: "",
@@ -79,7 +78,7 @@ export default function SetupForm() {
     e.preventDefault();
     setError(null);
 
-    if (!form.user_email || !form.role || !form.company || !form.yoe || !form.round_type) {
+    if (!form.role || !form.company || !form.yoe || !form.round_type) {
       setError("Please fill in all required fields.");
       return;
     }
@@ -123,7 +122,6 @@ export default function SetupForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_email: form.user_email,
           role: form.role,
           company: form.company,
           yoe: Number(form.yoe),
@@ -154,18 +152,6 @@ export default function SetupForm() {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="you@example.com"
-              value={form.user_email}
-              onChange={(e) => handleChange("user_email", e.target.value)}
-              required
-            />
-          </div>
-
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="role">Target Role</Label>

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useTTS } from "@/hooks/useTTS";
 import { useSTT } from "@/hooks/useSTT";
+import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 
 type RoomState =
   | "init"
@@ -35,14 +36,28 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     isSupported: sttSupported,
   } = useSTT();
 
+  const { startRecording, stopRecording, discardRecording, isRecording } = useAudioRecorder();
+
   const [roomState, setRoomState] = useState<RoomState>("init");
   const [current, setCurrent] = useState<QuestionState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fallbackText, setFallbackText] = useState("");
   const [cameraAllowed, setCameraAllowed] = useState<boolean | null>(null);
+  // Allow submit after 2.5s in listening state even if STT shows nothing (STT can be inaccurate)
+  const [hasListenedLong, setHasListenedLong] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  // ── Listening timer ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (roomState !== "listening") {
+      setHasListenedLong(false);
+      return;
+    }
+    const t = setTimeout(() => setHasListenedLong(true), 2500);
+    return () => clearTimeout(t);
+  }, [roomState]);
 
   // ── Fullscreen ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -122,13 +137,15 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       setRoomState("speaking");
       await speak(q.question);
       setRoomState("listening");
-      startSTT(); // start() guards internally — no-op if unsupported
+      startSTT();
+      await startRecording();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
       setRoomState("listening");
       startSTT();
+      await startRecording();
     }
-  }, [sessionId, router, speak, resetSTT, startSTT]);
+  }, [sessionId, router, speak, resetSTT, startSTT, startRecording]);
 
   // Load first question on mount
   useEffect(() => {
@@ -140,12 +157,50 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
   // ── Submit ───────────────────────────────────────────────────────────────────
   async function handleSubmit() {
     if (!current) return;
-    const answerText = sttSupported ? transcript.trim() : fallbackText.trim();
-    if (!answerText) return;
+
     cancelTTS();
     stopSTT();
+
+    // Capture STT values before async operations clear them
+    const sttFallback = (transcript + interimTranscript).trim();
+
+    // Stop recording and collect audio
+    const audioBlob = await stopRecording();
+
     setRoomState("submitting");
     setError(null);
+
+    let answerText = "";
+
+    if (sttSupported) {
+      // Try Whisper for accurate transcription, fall back to STT transcript
+      if (audioBlob.size > 0) {
+        try {
+          const fd = new FormData();
+          const ext = audioBlob.type.includes("ogg") ? "ogg" : "webm";
+          fd.append("audio", audioBlob, `recording.${ext}`);
+          const res = await fetch("/api/transcribe", { method: "POST", body: fd });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.text?.trim()) answerText = data.text.trim();
+          }
+        } catch {
+          // Whisper failed — fall through to STT transcript
+        }
+      }
+      if (!answerText) answerText = sttFallback;
+    } else {
+      answerText = fallbackText.trim();
+    }
+
+    if (!answerText) {
+      setError("No answer captured. Please speak and try again.");
+      setRoomState("listening");
+      startSTT();
+      await startRecording();
+      return;
+    }
+
     try {
       const res = await fetch("/api/interview/answer", {
         method: "POST",
@@ -164,22 +219,26 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
   }
 
   // ── Retry ────────────────────────────────────────────────────────────────────
-  function handleRetry() {
+  async function handleRetry() {
     cancelTTS();
+    discardRecording();
     resetSTT();
     setFallbackText("");
     setRoomState("listening");
     startSTT();
+    await startRecording();
   }
 
   // ── Re-speak ─────────────────────────────────────────────────────────────────
   async function handleRespeak() {
     if (!current) return;
     stopSTT();
+    discardRecording();
     setRoomState("speaking");
     await speak(current.question);
     setRoomState("listening");
     startSTT();
+    await startRecording();
   }
 
   const progressValue = current
@@ -189,7 +248,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
   const canSubmit =
     (roomState === "listening" || roomState === "speaking") &&
     (sttSupported
-      ? (transcript + interimTranscript).trim().length > 0
+      ? hasListenedLong || (transcript + interimTranscript).trim().length > 0
       : fallbackText.trim().length > 0);
 
   // ── Debrief loading screen ────────────────────────────────────────────────────
@@ -309,7 +368,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
             ) : (
               <p className="text-sm text-white/25 italic">
                 {roomState === "listening"
-                  ? "Speak your answer — it will appear here…"
+                  ? "Speak your answer — AI will transcribe accurately on submit…"
                   : "Your answer will appear here."}
               </p>
             )}
@@ -340,6 +399,11 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
               <>
                 <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />
                 <span className="text-green-300 text-xs font-medium">Listening</span>
+              </>
+            ) : isRecording ? (
+              <>
+                <span className="w-2.5 h-2.5 rounded-full bg-red-400 animate-pulse" />
+                <span className="text-red-300 text-xs font-medium">Recording</span>
               </>
             ) : (
               <>
