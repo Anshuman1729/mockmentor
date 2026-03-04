@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { generateDebrief } from "@/lib/anthropic";
+import { generateDebrief } from "@/lib/groq";
 import { sendDebriefEmail } from "@/lib/email";
 
 export async function POST(req: NextRequest) {
@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
         yoe: session.yoe,
         round_type: session.round_type,
         jd_content: session.jd_content,
+        background: session.background,
       },
       qas.map((qa) => ({
         question_number: qa.question_number,

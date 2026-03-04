@@ -26,6 +26,7 @@ export interface SessionContext {
   yoe: number;
   round_type: string;
   jd_content: string;
+  background?: string | null;
 }
 
 export async function generateNextQuestion(
@@ -41,8 +42,12 @@ export async function generateNextQuestion(
       .map((qa) => `Q${qa.question_number}: ${qa.question}\nA: ${qa.answer}`)
       .join("\n\n") || "No previous questions yet.";
 
-  const systemPrompt = `You are a senior interviewer at ${session.company}. You are conducting a ${session.round_type} interview for a ${session.role} position. The candidate has ${session.yoe} year(s) of experience.
+  const backgroundSection = session.background
+    ? `\nCandidate Background:\n${session.background}\n`
+    : "";
 
+  const systemPrompt = `You are a senior interviewer at ${session.company}. You are conducting a ${session.round_type} interview for a ${session.role} position. The candidate has ${session.yoe} year(s) of experience.
+${backgroundSection}
 Job Description:
 ${session.jd_content.slice(0, 4000)}
 
@@ -90,6 +95,10 @@ export async function generateDebrief(
     )
     .join("\n\n");
 
+  const backgroundLine = session.background
+    ? `- Background: ${session.background}\n`
+    : "";
+
   const systemPrompt = `You are the interviewer who just completed this mock interview. Write an honest, direct post-interview summary as if speaking face-to-face with the candidate. Use "you" throughout. Be specific — reference actual things they said.
 
 Session details:
@@ -97,7 +106,7 @@ Session details:
 - Company: ${session.company}
 - Round type: ${session.round_type}
 - Years of experience: ${session.yoe}
-
+${backgroundLine}
 Job Description (excerpt):
 ${session.jd_content.slice(0, 3000)}
 

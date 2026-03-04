@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -34,6 +35,7 @@ export default function SetupForm() {
     yoe: "",
     round_type: "",
     jd_url: "",
+    background: "",
   });
   const [jdContent, setJdContent] = useState<string | null>(null);
   const [showFallback, setShowFallback] = useState(false);
@@ -100,6 +102,7 @@ export default function SetupForm() {
           yoe: Number(form.yoe),
           round_type: form.round_type,
           jd_content: finalJdContent,
+          background: form.background || null,
         }),
       });
 
@@ -118,7 +121,7 @@ export default function SetupForm() {
       <CardHeader>
         <CardTitle className="text-2xl">Start Your Mock Interview</CardTitle>
         <CardDescription>
-          Fill in your details and we&apos;ll run a personalized 7-question
+          Fill in your details and we&apos;ll run a personalized mock
           interview tailored to the job description.
         </CardDescription>
       </CardHeader>
@@ -191,6 +194,23 @@ export default function SetupForm() {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="background">
+              Your Background <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Textarea
+              id="background"
+              placeholder="Briefly describe your current role and relevant experience — e.g. 'I'm a PM at Tata Communications with 3 years in B2B SaaS, led cross-functional teams across procurement and risk.'"
+              value={form.background}
+              onChange={(e) => handleChange("background", e.target.value)}
+              rows={3}
+              className="resize-none"
+            />
+            <p className="text-xs text-muted-foreground">
+              Helps the AI ask relevant follow-ups and give personalised feedback.
+            </p>
           </div>
 
           {!showFallback && (

@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { generateNextQuestion } from "@/lib/anthropic";
+import { generateNextQuestion } from "@/lib/groq";
 
-const TOTAL_QUESTIONS = 7;
+const QUESTIONS_BY_ROUND: Record<string, number> = {
+  screening: 5,
+  technical: 8,
+  final: 10,
+  behavioural: 7,
+};
+
+function getTotalQuestions(roundType: string): number {
+  return QUESTIONS_BY_ROUND[roundType] ?? 7;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,10 +31,11 @@ export async function POST(req: NextRequest) {
       SELECT * FROM qa_pairs WHERE session_id = ${sessionId} ORDER BY question_number ASC
     `;
 
+    const totalQuestions = getTotalQuestions(session.round_type);
     const answeredCount = qas.filter((qa) => qa.answer !== null).length;
 
     // Check if interview is complete
-    if (answeredCount >= TOTAL_QUESTIONS) {
+    if (answeredCount >= totalQuestions) {
       return NextResponse.json({ done: true });
     }
 
@@ -36,7 +46,7 @@ export async function POST(req: NextRequest) {
         questionId: unanswered.id,
         question: unanswered.question,
         questionNumber: unanswered.question_number,
-        total: TOTAL_QUESTIONS,
+        total: totalQuestions,
         done: false,
       });
     }
@@ -49,6 +59,7 @@ export async function POST(req: NextRequest) {
         yoe: session.yoe,
         round_type: session.round_type,
         jd_content: session.jd_content,
+        background: session.background,
       },
       qas.map((qa) => ({
         question_number: qa.question_number,
@@ -69,7 +80,7 @@ export async function POST(req: NextRequest) {
       questionId: inserted[0].id,
       question,
       questionNumber: nextNumber,
-      total: TOTAL_QUESTIONS,
+      total: totalQuestions,
       done: false,
     });
   } catch (err) {

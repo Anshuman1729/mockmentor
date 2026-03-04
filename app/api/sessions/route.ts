@@ -3,7 +3,7 @@ import { sql } from "@/lib/db";
 
 export async function POST(req: NextRequest) {
   try {
-    const { user_email, role, company, yoe, round_type, jd_content } =
+    const { user_email, role, company, yoe, round_type, jd_content, background } =
       await req.json();
 
     if (!user_email || !role || !company || !yoe || !round_type || !jd_content) {
@@ -14,8 +14,8 @@ export async function POST(req: NextRequest) {
     }
 
     const rows = await sql`
-      INSERT INTO sessions (user_email, role, company, yoe, round_type, jd_content)
-      VALUES (${user_email}, ${role}, ${company}, ${Number(yoe)}, ${round_type}, ${jd_content})
+      INSERT INTO sessions (user_email, role, company, yoe, round_type, jd_content, background)
+      VALUES (${user_email}, ${role}, ${company}, ${Number(yoe)}, ${round_type}, ${jd_content}, ${background ?? null})
       RETURNING id
     `;
 
