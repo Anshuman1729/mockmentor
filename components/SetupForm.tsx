@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -42,10 +41,38 @@ export default function SetupForm() {
   const [fetchingJD, setFetchingJD] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [resumeParsed, setResumeParsed] = useState<string | null>(null);
+  const [parsingResume, setParsingResume] = useState(false);
 
   function handleChange(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
     setError(null);
+  }
+
+  async function handleResumeChange(file: File | null) {
+    setResumeFile(file);
+    setResumeParsed(null);
+    if (!file) return;
+    setParsingResume(true);
+    try {
+      const fd = new FormData();
+      fd.append("resume", file);
+      const res = await fetch("/api/parse-resume", { method: "POST", body: fd });
+      const data = await res.json();
+      if (res.ok && data.text) {
+        setResumeParsed(data.text);
+        setForm((prev) => ({ ...prev, background: data.text }));
+      } else {
+        setError(data.error ?? "Failed to parse resume");
+        setResumeFile(null);
+      }
+    } catch {
+      setError("Failed to parse resume");
+      setResumeFile(null);
+    } finally {
+      setParsingResume(false);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -197,20 +224,30 @@ export default function SetupForm() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="background">
-              Your Background <span className="text-muted-foreground font-normal">(optional)</span>
+            <Label htmlFor="resume">
+              Resume <span className="text-muted-foreground font-normal">(optional · PDF)</span>
             </Label>
-            <Textarea
-              id="background"
-              placeholder="Briefly describe your current role and relevant experience — e.g. 'I'm a PM at Tata Communications with 3 years in B2B SaaS, led cross-functional teams across procurement and risk.'"
-              value={form.background}
-              onChange={(e) => handleChange("background", e.target.value)}
-              rows={3}
-              className="resize-none"
+            <Input
+              id="resume"
+              type="file"
+              accept="application/pdf"
+              disabled={parsingResume}
+              onChange={(e) => handleResumeChange(e.target.files?.[0] ?? null)}
+              className="cursor-pointer"
             />
-            <p className="text-xs text-muted-foreground">
-              Helps the AI ask relevant follow-ups and give personalised feedback.
-            </p>
+            {parsingResume && (
+              <p className="text-xs text-muted-foreground">Reading resume…</p>
+            )}
+            {resumeParsed && !parsingResume && (
+              <p className="text-xs text-green-600 font-medium">
+                Resume parsed ({resumeParsed.length.toLocaleString()} chars) — AI will use it to personalise questions.
+              </p>
+            )}
+            {!resumeParsed && !parsingResume && (
+              <p className="text-xs text-muted-foreground">
+                Upload your resume so the AI can ask relevant follow-ups and give personalised feedback.
+              </p>
+            )}
           </div>
 
           {!showFallback && (

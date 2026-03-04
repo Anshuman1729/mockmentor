@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
         round_type: session.round_type,
         jd_content: session.jd_content,
         background: session.background,
+        total_questions: totalQuestions,
       },
       qas.map((qa) => ({
         question_number: qa.question_number,

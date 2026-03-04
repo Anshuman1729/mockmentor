@@ -27,6 +27,7 @@ export interface SessionContext {
   round_type: string;
   jd_content: string;
   background?: string | null;
+  total_questions?: number;
 }
 
 export async function generateNextQuestion(
@@ -34,7 +35,8 @@ export async function generateNextQuestion(
   previousQAs: QAPair[]
 ): Promise<string> {
   const answeredCount = previousQAs.filter((qa) => qa.answer !== null).length;
-  const totalTarget = 7;
+  const totalTarget = session.total_questions ?? 7;
+  const isFirstQuestion = previousQAs.length === 0;
 
   const qaHistory =
     previousQAs
@@ -43,8 +45,13 @@ export async function generateNextQuestion(
       .join("\n\n") || "No previous questions yet.";
 
   const backgroundSection = session.background
-    ? `\nCandidate Background:\n${session.background}\n`
+    ? `\nCandidate Resume / Background:\n${session.background}\n`
     : "";
+
+  const questionInstruction = isFirstQuestion
+    ? `This is question 1 of ${totalTarget}. Ask an open-ended opener to understand who the candidate is — their current role, key experience, and what they're looking to do next. Make it feel natural and conversational, not a checklist. Do NOT ask a technical question yet.`
+    : `Target ${totalTarget} questions total. You have asked ${answeredCount} so far.
+${answeredCount % 2 === 0 ? "Ask a behavioral/soft-skill question this time." : "Ask a technical question this time."}`;
 
   const systemPrompt = `You are a senior interviewer at ${session.company}. You are conducting a ${session.round_type} interview for a ${session.role} position. The candidate has ${session.yoe} year(s) of experience.
 ${backgroundSection}
@@ -55,8 +62,7 @@ You ask ONE focused question per turn. Alternate between:
 - Technical questions: tools, systems, architecture, problem-solving directly relevant to the JD
 - Soft skill / behavioral questions: conflict resolution, leadership, communication style, how they handle pressure, confidence indicators
 
-Target ${totalTarget} questions total. You have asked ${answeredCount} so far.
-${answeredCount < totalTarget / 2 ? "Start with a technical question." : answeredCount % 2 === 0 ? "Ask a behavioral question this time." : "Ask a technical question this time."}
+${questionInstruction}
 
 Output ONLY the next interview question. No preamble, no labels, no explanation.`;
 
