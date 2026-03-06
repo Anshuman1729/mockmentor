@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { generateDebrief } from "@/lib/groq";
 import { sendDebriefEmail } from "@/lib/email";
+import { calculateNormalizedScore } from "@/lib/rubric-researched";
 
 export async function POST(req: NextRequest) {
   try {
@@ -43,9 +44,31 @@ export async function POST(req: NextRequest) {
       }))
     );
 
+    // Compute hire_probability deterministically from rubric scores
+    const rawScores: Record<string, number> = {};
+    for (const skill of debrief.skill_analysis) {
+      rawScores[skill.parameter_id] = skill.rating;
+    }
+    const seniority = session.yoe <= 2 ? "Junior" : session.yoe <= 5 ? "Mid" : "Senior";
+    const hireProbability = calculateNormalizedScore(rawScores, seniority);
+    const recommendation =
+      hireProbability >= 80 ? "Strong Hire" :
+      hireProbability >= 65 ? "Hire" :
+      hireProbability >= 45 ? "Borderline" : "No Hire";
+
+    // Inject computed values (overwrite LLM placeholders)
+    debrief.summary.hire_probability = hireProbability;
+    debrief.summary.recommendation = recommendation as typeof debrief.summary.recommendation;
+
+    // Extract reasoning for shadow scoring (stored separately, not in user-facing debrief_data)
+    const reasoning = debrief.skill_analysis.map((s) => ({
+      parameter_id: s.parameter_id,
+      reasoning: s.reasoning,
+    }));
+
     const inserted = await sql`
-      INSERT INTO debriefs (session_id, debrief_data)
-      VALUES (${sessionId}, ${JSON.stringify(debrief)}::jsonb)
+      INSERT INTO debriefs (session_id, debrief_data, reasoning)
+      VALUES (${sessionId}, ${JSON.stringify(debrief)}::jsonb, ${JSON.stringify(reasoning)}::jsonb)
       RETURNING *
     `;
 
