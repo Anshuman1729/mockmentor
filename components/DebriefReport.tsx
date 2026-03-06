@@ -344,7 +344,7 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
           {legacy.verdict}
         </div>
         <p className="text-gray-800 leading-relaxed text-[15px]">{legacy.overall}</p>
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <div className="space-y-2">
             <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase">What went well</p>
             <ul className="space-y-2">

@@ -429,7 +429,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
             </p>
           </div>
 
-          <div className="absolute bottom-4 right-4 w-44 h-32 rounded-2xl overflow-hidden border border-white/20 bg-gray-800 shadow-2xl">
+          <div className="absolute bottom-4 right-4 w-32 h-24 sm:w-44 sm:h-32 rounded-2xl overflow-hidden border border-white/20 bg-gray-800 shadow-2xl">
             {cameraAllowed === false ? (
               <div className="w-full h-full flex items-center justify-center">
                 <span className="text-xs text-gray-400 text-center px-2">Camera off</span>
@@ -482,7 +482,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
 
         {error && <p className="text-xs text-red-400 text-center px-6 pb-2">{error}</p>}
 
-        <div className="flex items-center justify-between px-6 py-4 border-t border-white/10 bg-black/30">
+        <div className="flex flex-wrap items-center justify-between gap-y-2 px-6 py-4 border-t border-white/10 bg-black/30">
           <div className="flex items-center gap-2 min-w-24">
             {sttSupported ? (
               isListening ? (
@@ -602,7 +602,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
         </div>
 
         {/* User camera — PiP corner tile */}
-        <div className="absolute bottom-4 right-4 w-44 h-32 rounded-2xl overflow-hidden border border-white/20 bg-gray-800 shadow-2xl">
+        <div className="absolute bottom-4 right-4 w-32 h-24 sm:w-44 sm:h-32 rounded-2xl overflow-hidden border border-white/20 bg-gray-800 shadow-2xl">
           {cameraAllowed === false ? (
             <div className="w-full h-full flex items-center justify-center">
               <span className="text-xs text-gray-400 text-center px-2">Camera off</span>
@@ -670,7 +670,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       )}
 
       {/* ── Controls bar ── */}
-      <div className="flex items-center justify-between px-6 py-4 border-t border-white/10 bg-black/30">
+      <div className="flex flex-wrap items-center justify-between gap-y-2 px-6 py-4 border-t border-white/10 bg-black/30">
 
         {/* Mic indicator */}
         <div className="flex items-center gap-2 min-w-24">
