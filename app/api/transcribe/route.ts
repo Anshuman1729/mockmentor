@@ -25,14 +25,11 @@ export async function POST(req: NextRequest) {
     const ext = audio.type.includes("ogg") ? "ogg" : "webm";
     const file = new File([buffer], `recording.${ext}`, { type: audio.type || "audio/webm" });
 
-    const prompt = formData.get("prompt") as string | null;
-
     const transcription = await getClient().audio.transcriptions.create({
       file,
-      model: "whisper-large-v3",
+      model: "whisper-large-v3-turbo",
       language: "en",
       response_format: "json",
-      ...(prompt ? { prompt } : {}),
     });
 
     const text = transcription.text?.trim() ?? "";

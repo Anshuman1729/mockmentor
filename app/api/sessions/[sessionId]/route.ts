@@ -1,26 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ sessionId: string }> }
-) {
-  try {
-    const { sessionId } = await params;
-    const { background } = await req.json();
-    if (typeof background !== "string") {
-      return NextResponse.json({ error: "background must be a string" }, { status: 400 });
-    }
-    await sql`
-      UPDATE sessions SET background = ${background}, updated_at = NOW() WHERE id = ${sessionId}
-    `;
-    return NextResponse.json({ success: true });
-  } catch (err) {
-    console.error("[PATCH /api/sessions/[sessionId]]", err);
-    return NextResponse.json({ error: "Failed to update session" }, { status: 500 });
-  }
-}
-
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> }
