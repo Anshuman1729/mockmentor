@@ -401,13 +401,20 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
                   {interimTranscript && <span className="text-white/40 italic">{interimTranscript}</span>}
                 </p>
               ) : (
-                <p className="text-sm text-white/25 italic">
-                  {!isSpeaking
-                    ? sttNetworkError
-                      ? "Recording in progress — Whisper will transcribe on submit…"
-                      : "Introduce yourself — your role, experience, and goals…"
-                    : ""}
-                </p>
+                {sttNetworkError && !isSpeaking ? (
+                  <div className="flex items-center gap-3 py-0.5">
+                    <span className="flex items-end gap-[3px] h-4 shrink-0">
+                      {[40, 80, 55, 90, 45].map((h, i) => (
+                        <span key={i} className="w-[3px] rounded-full bg-blue-400/60 animate-pulse" style={{ height: `${h}%`, animationDelay: `${i * 130}ms` }} />
+                      ))}
+                    </span>
+                    <span className="text-sm text-white/50">Recording your answer <span className="text-xs text-white/25">— Whisper transcribes on submit</span></span>
+                  </div>
+                ) : (
+                  <p className="text-sm text-white/25 italic">
+                    {!isSpeaking ? "Introduce yourself — your role, experience, and goals…" : ""}
+                  </p>
+                )}
               )}
             </div>
           ) : (
@@ -433,8 +440,8 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
                 </>
               ) : isRecording ? (
                 <>
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-400 animate-pulse" />
-                  <span className="text-red-300 text-xs font-medium">Recording</span>
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse" />
+                  <span className="text-blue-300 text-xs font-medium">Recording answer</span>
                 </>
               ) : (
                 <>
@@ -583,12 +590,19 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
                   <span className="text-white/40 italic">{interimTranscript}</span>
                 )}
               </p>
+            ) : sttNetworkError && roomState === "listening" ? (
+              <div className="flex items-center gap-3 py-0.5">
+                <span className="flex items-end gap-[3px] h-4 shrink-0">
+                  {[40, 80, 55, 90, 45].map((h, i) => (
+                    <span key={i} className="w-[3px] rounded-full bg-blue-400/60 animate-pulse" style={{ height: `${h}%`, animationDelay: `${i * 130}ms` }} />
+                  ))}
+                </span>
+                <span className="text-sm text-white/50">Recording your answer <span className="text-xs text-white/25">— Whisper transcribes on submit</span></span>
+              </div>
             ) : (
               <p className="text-sm text-white/25 italic">
                 {roomState === "listening"
-                  ? sttNetworkError
-                    ? "Recording in progress — Whisper will transcribe on submit…"
-                    : "Speak your answer — AI will transcribe accurately on submit…"
+                  ? "Speak your answer — AI will transcribe accurately on submit…"
                   : "Your answer will appear here."}
               </p>
             )}
@@ -622,8 +636,8 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
               </>
             ) : isRecording ? (
               <>
-                <span className="w-2.5 h-2.5 rounded-full bg-red-400 animate-pulse" />
-                <span className="text-red-300 text-xs font-medium">Recording</span>
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse" />
+                <span className="text-blue-300 text-xs font-medium">Recording answer</span>
               </>
             ) : (
               <>
