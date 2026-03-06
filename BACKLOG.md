@@ -13,6 +13,7 @@
 | STT: Prompt biasing | Injects role/company/round into Whisper `prompt` param |
 | STT: "Rough Draft" label | Shows on live transcript, disappears after Whisper result |
 | TMAY profile-setup step | `InterviewRoom.tsx` — new `tmay` state; PATCH `/api/sessions/[sessionId]` |
+| STT: network error handling | `useSTT.ts` + `InterviewRoom.tsx` — stop retry loop on Chrome network error, show "Recording in progress" message |
 
 ---
 
