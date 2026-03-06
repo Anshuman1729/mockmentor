@@ -10,6 +10,7 @@ import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 
 type RoomState =
   | "init"
+  | "tmay"
   | "loading-question"
   | "speaking"
   | "listening"
@@ -21,6 +22,13 @@ interface QuestionState {
   question: string;
   questionNumber: number;
   total: number;
+}
+
+interface SessionInfo {
+  role: string;
+  company: string;
+  round_type: string;
+  background: string | null;
 }
 
 export default function InterviewRoom({ sessionId }: { sessionId: string }) {
@@ -45,6 +53,8 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
   const [cameraAllowed, setCameraAllowed] = useState<boolean | null>(null);
   // Allow submit after 2.5s in listening state even if STT shows nothing (STT can be inaccurate)
   const [hasListenedLong, setHasListenedLong] = useState(false);
+  const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
+  const [tmaySubmitting, setTmaySubmitting] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -89,13 +99,13 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
 
   // ── STT safety net ───────────────────────────────────────────────────────────
   // Primary STT start happens via explicit startSTT() calls in fetchNextQuestion,
-  // handleRetry, and handleRespeak. This effect is a secondary safety net that
-  // restarts STT if it drops mid-listening (e.g. Android no-speech timeout).
+  // handleRetry, handleRespeak, and TMAY init. This effect is a secondary safety
+  // net that restarts STT if it drops mid-listening (e.g. Android no-speech timeout).
   useEffect(() => {
-    if (roomState === "listening" && sttSupported && !isListening) {
+    if ((roomState === "listening" || roomState === "tmay") && sttSupported && !isListening && !isSpeaking) {
       startSTT();
     }
-  }, [roomState, sttSupported, isListening, startSTT]);
+  }, [roomState, sttSupported, isListening, isSpeaking, startSTT]);
 
   // ── Fetch question → speak → listen ─────────────────────────────────────────
   const fetchNextQuestion = useCallback(async () => {
@@ -147,10 +157,33 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     }
   }, [sessionId, router, speak, resetSTT, startSTT, startRecording]);
 
-  // Load first question on mount
+  // Load session on mount — show TMAY step if no background, else load first question
   useEffect(() => {
-    const t = setTimeout(() => fetchNextQuestion(), 300);
-    return () => clearTimeout(t);
+    let cancelled = false;
+    async function initRoom() {
+      await new Promise((r) => setTimeout(r, 300));
+      if (cancelled) return;
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}`);
+        const data = await res.json();
+        if (cancelled) return;
+        const s: SessionInfo = data.session;
+        setSessionInfo(s);
+        if (!s.background) {
+          setRoomState("tmay");
+          await speak("Before we begin, tell me a bit about yourself — your current role, key experience, and what you're looking to achieve.");
+          if (cancelled) return;
+          startSTT();
+          await startRecording();
+        } else {
+          fetchNextQuestion();
+        }
+      } catch {
+        if (!cancelled) fetchNextQuestion();
+      }
+    }
+    initRoom();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -179,6 +212,9 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
           const fd = new FormData();
           const ext = audioBlob.type.includes("ogg") ? "ogg" : "webm";
           fd.append("audio", audioBlob, `recording.${ext}`);
+          if (sessionInfo) {
+            fd.append("prompt", `Interview: ${sessionInfo.role} at ${sessionInfo.company}, ${sessionInfo.round_type} round.`);
+          }
           const res = await fetch("/api/transcribe", { method: "POST", body: fd });
           if (res.ok) {
             const data = await res.json();
@@ -218,6 +254,57 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     }
   }
 
+  // ── TMAY submit ──────────────────────────────────────────────────────────────
+  async function handleTmaySubmit() {
+    const sttText = (transcript + interimTranscript).trim();
+    cancelTTS();
+    stopSTT();
+    setTmaySubmitting(true);
+    setError(null);
+
+    let background = sttText;
+
+    if (sttSupported) {
+      const audioBlob = await stopRecording();
+      if (audioBlob.size > 0) {
+        try {
+          const fd = new FormData();
+          const ext = audioBlob.type.includes("ogg") ? "ogg" : "webm";
+          fd.append("audio", audioBlob, `recording.${ext}`);
+          if (sessionInfo) {
+            fd.append("prompt", `Interview context: ${sessionInfo.role} at ${sessionInfo.company}. Candidate self-introduction.`);
+          }
+          const res = await fetch("/api/transcribe", { method: "POST", body: fd });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.text?.trim()) background = data.text.trim();
+          }
+        } catch { /* use STT fallback */ }
+      }
+      if (!background) background = sttText;
+    } else {
+      discardRecording();
+      background = fallbackText.trim();
+    }
+
+    try {
+      await fetch(`/api/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ background }),
+      });
+      setSessionInfo((prev) => prev ? { ...prev, background } : prev);
+      resetSTT();
+      setFallbackText("");
+      fetchNextQuestion();
+    } catch {
+      setError("Failed to save your intro. Please try again.");
+      setTmaySubmitting(false);
+      startSTT();
+      await startRecording();
+    }
+  }
+
   // ── Retry ────────────────────────────────────────────────────────────────────
   async function handleRetry() {
     cancelTTS();
@@ -250,6 +337,127 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     (sttSupported
       ? hasListenedLong || (transcript + interimTranscript).trim().length > 0
       : fallbackText.trim().length > 0);
+
+  // ── TMAY step ─────────────────────────────────────────────────────────────────
+  if (roomState === "tmay") {
+    return (
+      <div className="fixed inset-0 bg-gray-950 flex flex-col text-white z-50 select-none">
+        <div className="flex-1 flex items-center justify-center relative overflow-hidden px-6">
+          <div className="flex flex-col items-center gap-6 text-center max-w-xl w-full">
+            <div className="relative flex items-center justify-center w-28 h-28">
+              {isSpeaking && (
+                <>
+                  <span className="absolute inset-0 rounded-full border-2 border-blue-400 animate-ping opacity-30" />
+                  <span className="absolute inset-2 rounded-full border border-blue-400/50 animate-ping opacity-20" />
+                </>
+              )}
+              <span className={`text-6xl transition-transform duration-300 ${isSpeaking ? "scale-110" : "scale-100"}`}>
+                🤖
+              </span>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-gray-400 tracking-widest uppercase">AI Interviewer</p>
+              {isSpeaking ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/15 text-blue-300 text-xs font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                  Speaking
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-500/15 text-green-300 text-xs font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                  Your turn
+                </span>
+              )}
+            </div>
+            <p className="text-xl leading-relaxed text-white/90 font-light">
+              &ldquo;Before we begin, tell me about yourself — your current role, key experience, and what you&apos;re looking to achieve.&rdquo;
+            </p>
+          </div>
+
+          <div className="absolute bottom-4 right-4 w-44 h-32 rounded-2xl overflow-hidden border border-white/20 bg-gray-800 shadow-2xl">
+            {cameraAllowed === false ? (
+              <div className="w-full h-full flex items-center justify-center">
+                <span className="text-xs text-gray-400 text-center px-2">Camera off</span>
+              </div>
+            ) : (
+              <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
+            )}
+            <span className="absolute bottom-1.5 left-2 text-xs text-white/50 font-medium">You</span>
+          </div>
+        </div>
+
+        <div className="px-6 pb-3">
+          {sttSupported ? (
+            <div className="relative rounded-xl border border-white/10 bg-white/5 px-4 py-3 min-h-14">
+              {!isSpeaking && (
+                <span className="absolute top-2 right-3 text-xs text-yellow-400/60 uppercase tracking-wider font-mono">
+                  Rough Draft
+                </span>
+              )}
+              {(transcript + interimTranscript).trim() ? (
+                <p className="text-sm text-white/90 leading-relaxed pr-24">
+                  {transcript}
+                  {interimTranscript && <span className="text-white/40 italic">{interimTranscript}</span>}
+                </p>
+              ) : (
+                <p className="text-sm text-white/25 italic">
+                  {!isSpeaking ? "Introduce yourself — your role, experience, and goals…" : ""}
+                </p>
+              )}
+            </div>
+          ) : (
+            <Textarea
+              rows={3}
+              placeholder="Tell me about yourself — your role, experience, and what brings you here..."
+              value={fallbackText}
+              onChange={(e) => setFallbackText(e.target.value)}
+              className="resize-none bg-white/5 border-white/10 text-white placeholder:text-white/25 focus-visible:ring-blue-500"
+            />
+          )}
+        </div>
+
+        {error && <p className="text-xs text-red-400 text-center px-6 pb-2">{error}</p>}
+
+        <div className="flex items-center justify-between px-6 py-4 border-t border-white/10 bg-black/30">
+          <div className="flex items-center gap-2 min-w-24">
+            {sttSupported ? (
+              isListening ? (
+                <>
+                  <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />
+                  <span className="text-green-300 text-xs font-medium">Listening</span>
+                </>
+              ) : isRecording ? (
+                <>
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-400 animate-pulse" />
+                  <span className="text-red-300 text-xs font-medium">Recording</span>
+                </>
+              ) : (
+                <>
+                  <span className="w-2.5 h-2.5 rounded-full bg-gray-600" />
+                  <span className="text-gray-500 text-xs">Mic off</span>
+                </>
+              )
+            ) : (
+              <span className="text-xs text-amber-400">Text mode</span>
+            )}
+          </div>
+          <Button
+            size="sm"
+            onClick={handleTmaySubmit}
+            disabled={tmaySubmitting || isSpeaking}
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white px-6 h-8"
+          >
+            {tmaySubmitting ? (
+              <span className="flex items-center gap-1.5">
+                <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Saving…
+              </span>
+            ) : "Continue →"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   // ── Debrief loading screen ────────────────────────────────────────────────────
   if (roomState === "generating-debrief") {
@@ -357,9 +565,14 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       {/* ── Transcript / answer ── */}
       <div className="px-6 pb-3">
         {sttSupported ? (
-          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 min-h-14">
+          <div className="relative rounded-xl border border-white/10 bg-white/5 px-4 py-3 min-h-14">
+            {roomState === "listening" && (
+              <span className="absolute top-2 right-3 text-xs text-yellow-400/60 uppercase tracking-wider font-mono">
+                Rough Draft
+              </span>
+            )}
             {(transcript + interimTranscript).trim() ? (
-              <p className="text-sm text-white/90 leading-relaxed">
+              <p className="text-sm text-white/90 leading-relaxed pr-24">
                 {transcript}
                 {interimTranscript && (
                   <span className="text-white/40 italic">{interimTranscript}</span>
