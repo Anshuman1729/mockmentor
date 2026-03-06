@@ -52,6 +52,7 @@ export function useSTT() {
   const [transcript, setTranscript] = useState("");
   const [interimTranscript, setInterimTranscript] = useState("");
   const [isSupported, setIsSupported] = useState(false);
+  const [hasNetworkError, setHasNetworkError] = useState(false);
 
   // Current active instance
   const recogRef = useRef<SpeechRecognition | null>(null);
@@ -104,6 +105,9 @@ export function useSTT() {
       if (event.error !== "no-speech" && event.error !== "aborted") {
         console.error("STT error:", event.error);
       }
+      if (event.error === "network") {
+        setHasNetworkError(true);
+      }
       isListeningRef.current = false;
       setIsListening(false);
     };
@@ -139,7 +143,8 @@ export function useSTT() {
     setIsListening(false);
     setTranscript("");
     setInterimTranscript("");
+    setHasNetworkError(false);
   }, []);
 
-  return { start, stop, reset, transcript, interimTranscript, isListening, isSupported };
+  return { start, stop, reset, transcript, interimTranscript, isListening, isSupported, hasNetworkError };
 }

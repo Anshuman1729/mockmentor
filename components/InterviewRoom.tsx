@@ -42,6 +42,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     interimTranscript,
     isListening,
     isSupported: sttSupported,
+    hasNetworkError: sttNetworkError,
   } = useSTT();
 
   const { startRecording, stopRecording, discardRecording, isRecording } = useAudioRecorder();
@@ -102,10 +103,10 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
   // handleRetry, handleRespeak, and TMAY init. This effect is a secondary safety
   // net that restarts STT if it drops mid-listening (e.g. Android no-speech timeout).
   useEffect(() => {
-    if ((roomState === "listening" || roomState === "tmay") && sttSupported && !isListening && !isSpeaking) {
+    if ((roomState === "listening" || roomState === "tmay") && sttSupported && !isListening && !isSpeaking && !sttNetworkError) {
       startSTT();
     }
-  }, [roomState, sttSupported, isListening, isSpeaking, startSTT]);
+  }, [roomState, sttSupported, isListening, isSpeaking, sttNetworkError, startSTT]);
 
   // ── Fetch question → speak → listen ─────────────────────────────────────────
   const fetchNextQuestion = useCallback(async () => {
@@ -401,7 +402,11 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
                 </p>
               ) : (
                 <p className="text-sm text-white/25 italic">
-                  {!isSpeaking ? "Introduce yourself — your role, experience, and goals…" : ""}
+                  {!isSpeaking
+                    ? sttNetworkError
+                      ? "Recording in progress — Whisper will transcribe on submit…"
+                      : "Introduce yourself — your role, experience, and goals…"
+                    : ""}
                 </p>
               )}
             </div>
@@ -581,7 +586,9 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
             ) : (
               <p className="text-sm text-white/25 italic">
                 {roomState === "listening"
-                  ? "Speak your answer — AI will transcribe accurately on submit…"
+                  ? sttNetworkError
+                    ? "Recording in progress — Whisper will transcribe on submit…"
+                    : "Speak your answer — AI will transcribe accurately on submit…"
                   : "Your answer will appear here."}
               </p>
             )}
