@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
       SELECT * FROM qa_pairs WHERE session_id = ${sessionId} ORDER BY question_number ASC
     `;
 
-    const debrief = await generateDebrief(
+    const { report: debrief, usage } = await generateDebrief(
       {
         role: session.role,
         company: session.company,
@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
         round_type: session.round_type,
         jd_content: session.jd_content,
         background: session.background,
+        company_stage: session.company_stage ?? null,
       },
       qas.map((qa) => ({
         question_number: qa.question_number,
@@ -67,8 +68,13 @@ export async function POST(req: NextRequest) {
     }));
 
     const inserted = await sql`
-      INSERT INTO debriefs (session_id, debrief_data, reasoning)
-      VALUES (${sessionId}, ${JSON.stringify(debrief)}::jsonb, ${JSON.stringify(reasoning)}::jsonb)
+      INSERT INTO debriefs (session_id, debrief_data, reasoning, tokens_used)
+      VALUES (
+        ${sessionId},
+        ${JSON.stringify(debrief)}::jsonb,
+        ${JSON.stringify(reasoning)}::jsonb,
+        ${JSON.stringify(usage)}::jsonb
+      )
       RETURNING *
     `;
 

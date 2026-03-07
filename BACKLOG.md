@@ -59,6 +59,29 @@
 
 ---
 
+## ✅ Done (Session — 2026-03-07, Batch Implementation: Model Swaps + Instrumentation + Context)
+
+| Task | Notes |
+|---|---|
+| **#A: LLM → Llama 4 Scout** | `lib/groq.ts` MODEL constant swapped to `meta-llama/llama-4-scout-17b-16e-instruct`. 81% cheaper, ~50% faster. Branch: `feat/batch-1-model-swaps` |
+| **#B: STT → Whisper v3 Turbo** | `app/api/transcribe/route.ts` model swapped to `whisper-large-v3-turbo`. 64% cheaper per interview. Branch: `feat/batch-1-model-swaps` |
+| **#9: Outcome Tracking API** | New `app/api/sessions/[sessionId]/outcome/route.ts` — POST `{ actual_outcome, company_type }` → UPDATE debriefs. No UI yet. Branch: `feat/batch-2-instrumentation` |
+| **#10: Longest Monologue Tracking** | DB: `qa_pairs.answer_duration_sec FLOAT`. InterviewRoom records `answerStartTimeRef` on listen start, computes `answer_duration_sec` on submit. Answer API stores it. Branch: `feat/batch-2-instrumentation` |
+| **#11: Question Rate Tracking** | DB: `sessions.candidate_questions_asked INTEGER DEFAULT 0`. InterviewRoom counts `?`-ending answers. PATCHes session before debrief trigger. PATCH handler extended. Branch: `feat/batch-2-instrumentation` |
+| **#12: Few-Shot Prompting** | `FEW_SHOT_EXAMPLES` constant in `lib/groq.ts` — 3 calibrated examples (Strong Hire/No Hire/Borderline) injected before scoring rubric in `generateDebrief()`. Anchors Scout to BARS JSON format. Branch: `feat/batch-2-instrumentation` |
+| **#13: Company Stage Context** | DB: `sessions.company_stage TEXT`. SetupForm: optional Seed/Series A/Series B/Public dropdown. Sessions route stores it. `SessionContext` extended. `[COMPANY CONTEXT]` block injected into debrief prompt. Branch: `feat/batch-3-context-tokens` |
+| **#14: Token Usage Logging** | DB: `debriefs.tokens_used JSONB`. `generateDebrief()` now returns `{ report, usage }`. Debrief route stores `{ input_tokens, output_tokens, model }` in `tokens_used`. Branch: `feat/batch-3-context-tokens` |
+
+---
+
+## ✅ Done (Session — 2026-03-07, Name Change)
+
+| Task | Notes |
+|---|---|
+| **Rename: MockMentor → PrepSignals** | Updated all user-facing text, metadata, email templates, docs, and code comments. PR `name-update` merged to main. Vercel URL (`mockmentor-mu.vercel.app`) left unchanged until redeployment under new name. |
+
+---
+
 ## ✅ Done (Session — 2026-03-06, Week 2 Features)
 
 | Task | Notes |
@@ -79,15 +102,7 @@
 
 ## 🔴 Critical (Do Next — Gates Everything Downstream)
 
-### A. Switch LLM to Llama 4 Scout
-- Update model string in `lib/groq.ts`: `"llama-3.3-70b-versatile"` → `"meta-llama/llama-4-scout-17b-16e-instruct"`
-- Run `npm run test:debrief:live` to validate debrief output quality
-- **Complexity**: S | **Gates**: #12 (few-shot), #13 (context injection), #14 (token logging)
-
-### B. Switch STT to Whisper Large v3 Turbo
-- Update model string in `app/api/transcribe/route.ts`: `"whisper-large-v3"` → `"whisper-large-v3-turbo"`
-- Test with a live interview session to confirm accuracy is acceptable
-- **Complexity**: S | **Gates**: Nothing downstream, pure cost saving
+✅ All critical items complete as of 2026-03-07.
 
 ---
 
@@ -130,51 +145,27 @@
 - Add mute toggle button in InterviewRoom controls bar
 - **Complexity**: S | **Deps**: None
 
-### 9. Outcome Tracking — API + UI pending ✅ (DB done)
-- DB columns `actual_outcome TEXT`, `company_type TEXT` added
-- Still needed: `/api/sessions/[sessionId]/outcome` POST endpoint + a simple "Did you get the job?" prompt after 2 weeks (email or in-app)
-- **Complexity**: M | **Deps**: Done
+### 9. Outcome Tracking ✅ Done (API complete, UI pending)
+- `/api/sessions/[sessionId]/outcome` POST endpoint done
+- Still needed: "Did you get the job?" prompt after 2 weeks (email or in-app)
 - **Target**: Start tracking after 50 paying users
-### 10. Longest Monologue Tracking
-- Capture duration of each individual answer during the interview (start/end timestamp per answer)
-- Store `answer_duration_sec` in `qa_pairs` table
-- Surface longest monologue in conversational metrics: target <2.5 min; flag if exceeded
-- **Complexity**: M | **Deps**: InterviewRoom.tsx instrumentation, DB migration on qa_pairs
-- **Why**: High variance between answers (e.g. 5-min vs 10-sec) = lack of consistent communication structure
 
-### 11. Question Rate Tracking
-- Track how many questions the candidate asks the interviewer during the session
-- Increment a counter in session state when candidate phrases end with "?" or explicit question markers
-- Store `candidate_questions_asked` in `sessions` table
-- Surface in conversational metrics: target 3–5 questions; below = disinterested, above = distracted
-- **Complexity**: M | **Deps**: InterviewRoom.tsx instrumentation, DB migration on sessions
-- **Why**: Question rate is a proxy for curiosity and critical thinking — key PM/leadership signal
+### 10. Longest Monologue Tracking ✅ Done (instrumentation complete, UI pending)
+- `qa_pairs.answer_duration_sec` stored per answer
+- Still needed: Surface longest monologue in conversational metrics card in `DebriefReport.tsx`
 
-### 12. Few-Shot Prompting in Debrief Generation
-- Add 2–3 few-shot examples to the system prompt in `lib/groq.ts` `generateDebrief()`
-- Examples should cover: Strong Hire response (deep technical + structured STAR), No Hire response (vague, no evidence), Borderline response (decent comms, weak depth)
-- Each example must include signal name → rating → reasoning → evidence_quote in the exact output JSON format
-- **Why**: Scout's MoE architecture anchors to few-shot format — prevents output drift into generic feedback. Critical for maintaining BARS quality after model switch.
-- **Complexity**: S | **Deps**: LLM switch to Scout
-- **File**: `lib/groq.ts` — modify `DEBRIEF_SYSTEM_PROMPT` or equivalent
+### 11. Question Rate Tracking ✅ Done (instrumentation complete, UI pending)
+- `sessions.candidate_questions_asked` stored
+- Still needed: Surface in conversational metrics card in `DebriefReport.tsx`
 
-### 13. Rich Context Injection in Debrief Prompt
-- Currently: JD is already passed to the debrief prompt ✅
-- Needed: Explicitly structure the prompt to use JD for company-specific signal evaluation
-- Add a "Company Stage" field to `SetupForm.tsx` (Seed / Series A / Series B / Public) — informs culture inference
-- Inject stage + company name + role into prompt as a structured `[COMPANY CONTEXT]` block
-- Example signal verdict: "Candidate's 'move fast' instinct suits your Series B pace — but lacks the documentation discipline that scales."
-- **Why**: Generic debrief = commodity. Company-contextualised debrief = defensible. Scout's 128k window makes this essentially free.
-- **Complexity**: M | **Deps**: #12 (do prompting first)
-- **Files**: `SetupForm.tsx`, `app/api/sessions/route.ts`, `lib/groq.ts`
+### 12. Few-Shot Prompting ✅ Done
+- 3 examples (Strong Hire / No Hire / Borderline) injected in `generateDebrief()` system prompt
 
-### 14. Token Usage Logging
-- Log input/output token counts from each Groq API call to a lightweight store (console or DB column)
-- Add `tokens_used JSONB` column to `debriefs` table: `{ input, output, model }`
-- Use Groq response `usage` field (already returned in API response)
-- **Why**: Validate cost projections at scale; catch prompt bloat before it hits PnL
-- **Complexity**: S | **Deps**: LLM switch to Scout
-- **File**: `app/api/interview/debrief/route.ts`, DB migration
+### 13. Rich Context Injection ✅ Done
+- `company_stage` field in SetupForm, sessions table, and debrief prompt
+
+### 14. Token Usage Logging ✅ Done
+- `debriefs.tokens_used JSONB` stores `{ input_tokens, output_tokens, model }` per debrief
 
 ---
 
