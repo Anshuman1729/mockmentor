@@ -1,5 +1,5 @@
 /**
- * MockMentor: The "Source of Truth" Rubric & Grading Engine
+ * PrepSignals: The "Source of Truth" Rubric & Grading Engine
  * Synthesized from: BarRaiser, FloCareer, Noota, Cockroach Labs, and Big Tech (Google/Amazon)
  * 
  * Logic: Evidence-First -> Behavioral Anchors (BARS) -> Weighted Normalization

@@ -1,11 +1,11 @@
-# Resource Database & Licensing Analysis (MockMentor)
+# Resource Database & Licensing Analysis (PrepSignals)
 
-This document tracks all external datasets, repositories, and articles used to inform the MockMentor scoring logic and question database.
+This document tracks all external datasets, repositories, and articles used to inform the PrepSignals scoring logic and question database.
 
 ## 1. High-Freedom Resources (Safe for Commercial/Derivative Use)
 These resources are used for **direct question ingestion** and **logic implementation**.
 
-| Source | License | Usage in MockMentor |
+| Source | License | Usage in PrepSignals |
 | :--- | :--- | :--- |
 | [realabbas/big-companies-interview-questions](https://github.com/realabbas/big-companies-interview-questions) | **CC0-1.0** | **Direct Ingestion:** Used to populate the company-specific question database. |
 | [cockroachlabs/open-sourced-interview-process](https://github.com/cockroachlabs/open-sourced-interview-process) | **CC0-1.0** | **Logic Refinement:** Used for the 1-5 BARS scale and "Evidence-Based" scoring logic. |
@@ -15,7 +15,7 @@ These resources are used for **direct question ingestion** and **logic implement
 ## 2. Restricted Resources (Fair Use / Structural Reference Only)
 These repositories **do not have a license**. To avoid copyright liability, we **MUST NOT** copy their text or code directly. We use them only for high-level structural inspiration (e.g., "how they categorize roles").
 
-| Source | License | Risk Level | MockMentor Policy |
+| Source | License | Risk Level | PrepSignals Policy |
 | :--- | :--- | :--- | :--- |
 | [Appsilon/awesome-interview-questions](https://github.com/Appsilon/awesome-interview-questions) | None | Medium | **Structural only:** Used to understand Senior vs. Junior mapping. Do not copy questions. |
 | [GoodNotes/interviews](https://github.com/GoodNotes/interviews) | None | Medium | **Process only:** Used to understand the "Passion Talk" concept. Do not copy exercises. |

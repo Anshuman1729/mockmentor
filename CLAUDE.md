@@ -1,7 +1,7 @@
-# MockMentor — Claude Code Instructions
+# PrepSignals — Claude Code Instructions
 
 ## What This App Is
-MockMentor is an AI-powered mock interview platform. Tagline: "Know exactly where you'd lose the offer — before you walk in."
+PrepSignals is an AI-powered mock interview platform. Tagline: "Know exactly where you'd lose the offer — before you walk in."
 Stack: Next.js 16 (App Router), TypeScript, Tailwind CSS, Neon Postgres, Groq API (Llama 3.3 70B), Sarvam AI TTS, Resend, Clerk auth.
 
 ## Non-Negotiable Rules
@@ -48,7 +48,7 @@ npm run test:debrief:live    # seed + call real API (dev server must be running)
 npm run test:debrief:clean   # delete test sessions, seed fresh
 ```
 - Loading screen preview: `http://localhost:3000/dev/loading`
-- Test sessions use `user_email = 'test@mockmentor.dev'`
+- Test sessions use `user_email = 'test@prepsignals.dev'`
 
 ## DB Schema Notes
 - `debriefs` table has: `debrief_data` (JSONB, user-facing), `reasoning` (JSONB, internal), `actual_outcome` (TEXT), `company_type` (TEXT)
