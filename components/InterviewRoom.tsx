@@ -110,6 +110,9 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
   const [hasListenedLong, setHasListenedLong] = useState(false);
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   const [tmaySubmitting, setTmaySubmitting] = useState(false);
+  // Instrumentation: answer duration (#10) and candidate question rate (#11)
+  const answerStartTimeRef = useRef<number | null>(null);
+  const [candidateQuestions, setCandidateQuestions] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -179,6 +182,13 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       if (!res.ok) throw new Error(data.error ?? "Failed to load question");
 
       if (data.done) {
+        // Flush candidate_questions_asked before generating debrief (#11)
+        await fetch(`/api/sessions/${sessionId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ candidate_questions_asked: candidateQuestions }),
+        }).catch(() => {/* non-fatal */});
+
         setRoomState("generating-debrief");
         const dr = await fetch("/api/interview/debrief", {
           method: "POST",
@@ -202,6 +212,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       setRoomState("speaking");
       await speak(q.question);
       setRoomState("listening");
+      answerStartTimeRef.current = Date.now();
       startSTT();
       await startRecording();
     } catch (err) {
@@ -249,6 +260,13 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     cancelTTS();
     stopSTT();
 
+    // Compute answer duration (#10)
+    const answerDurationSec =
+      answerStartTimeRef.current !== null
+        ? Math.round((Date.now() - answerStartTimeRef.current) / 100) / 10
+        : null;
+    answerStartTimeRef.current = null;
+
     // Capture STT values before async operations clear them
     const sttFallback = (transcript + interimTranscript).trim();
 
@@ -292,11 +310,20 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       return;
     }
 
+    // Track candidate questions (#11) — detect if answer ends with "?"
+    if (answerText.trimEnd().endsWith("?")) {
+      setCandidateQuestions((n) => n + 1);
+    }
+
     try {
       const res = await fetch("/api/interview/answer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ questionId: current.questionId, answer: answerText }),
+        body: JSON.stringify({
+          questionId: current.questionId,
+          answer: answerText,
+          answer_duration_sec: answerDurationSec,
+        }),
       });
       if (!res.ok) {
         const data = await res.json();
