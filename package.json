@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test:debrief": "node --env-file=.env.local scripts/seed-test-debrief.mjs",
     "test:debrief:live": "node --env-file=.env.local scripts/seed-test-debrief.mjs --live",
-    "test:debrief:clean": "node --env-file=.env.local scripts/seed-test-debrief.mjs --clean"
+    "test:debrief:clean": "node --env-file=.env.local scripts/seed-test-debrief.mjs --clean",
+    "seed:intelligence": "npx tsx --env-file=.env.local scripts/seed-intelligence.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.0.1",

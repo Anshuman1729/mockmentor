@@ -62,6 +62,32 @@ export async function POST(req: NextRequest) {
 
     const seniority = session.yoe <= 2 ? "Junior" : session.yoe <= 5 ? "Mid" : "Senior";
     let hireProbability = calculateNormalizedScore(rawScores, seniority);
+
+    // Tier 2: if a seed's expected signals scored ≤2, apply targeted penalty
+    const seedIds = qas
+      .map((qa) => qa.seed_question_id)
+      .filter(Boolean) as string[];
+    if (seedIds.length > 0) {
+      try {
+        const seedRows = await sql`
+          SELECT expected_signals FROM question_bank WHERE id = ANY(${seedIds}::uuid[])
+        `;
+        const targetedSignals = new Set(
+          seedRows.flatMap((r) => (r.expected_signals as string[]) ?? [])
+        );
+        let tier2Penalty = 0;
+        for (const sig of targetedSignals) {
+          if ((rawScores[sig] ?? 0) <= 2) tier2Penalty += 3;
+        }
+        if (tier2Penalty > 0) {
+          hireProbability = Math.max(0, hireProbability - tier2Penalty);
+          console.log(`[tier2] Applied ${tier2Penalty}pt penalty for weak targeted signals`);
+        }
+      } catch (e) {
+        console.warn("[tier2 penalty failed — skipping]", e);
+      }
+    }
+
     const recommendation =
       hireProbability >= 80 ? "Strong Hire" :
       hireProbability >= 65 ? "Hire" :
@@ -109,6 +135,12 @@ export async function POST(req: NextRequest) {
     await sql`
       UPDATE sessions SET status = 'completed', updated_at = NOW() WHERE id = ${sessionId}
     `;
+
+    // Log calibration loop (actual_outcome and discrepancy_score filled later via outcome API)
+    await sql`
+      INSERT INTO calibration_loops (session_id, ai_score, llm_reasoning)
+      VALUES (${sessionId}, ${hireProbability}, ${JSON.stringify(reasoning)}::jsonb)
+    `.catch((e) => console.error("[calibration_loops insert failed]", e));
 
     // Send debrief email (non-fatal if it fails)
     await sendDebriefEmail(

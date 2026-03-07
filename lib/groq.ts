@@ -31,9 +31,16 @@ export interface SessionContext {
   company_stage?: string | null;
 }
 
+export interface SeedQuestion {
+  id: string;
+  question_text: string;
+  expected_signals: string[];
+}
+
 export async function generateNextQuestion(
   session: SessionContext,
-  previousQAs: QAPair[]
+  previousQAs: QAPair[],
+  seedQuestion?: SeedQuestion
 ): Promise<string> {
   const answeredCount = previousQAs.filter((qa) => qa.answer !== null).length;
   const totalTarget = session.total_questions ?? 7;
@@ -54,6 +61,13 @@ export async function generateNextQuestion(
     : `Target ${totalTarget} questions total. You have asked ${answeredCount} so far.
 ${answeredCount % 2 === 0 ? "Ask a behavioral/soft-skill question this time." : "Ask a technical question this time."}`;
 
+  const seedSection = seedQuestion
+    ? `\n[SEED QUESTION — adapt this to fit the conversation flow and candidate background]
+Base question: ${seedQuestion.question_text}
+Target signals: ${seedQuestion.expected_signals.join(", ")}
+Do NOT copy verbatim — rephrase naturally for this specific candidate and context.\n`
+    : "";
+
   const systemPrompt = `You are a senior interviewer at ${session.company}. You are conducting a ${session.round_type} interview for a ${session.role} position. The candidate has ${session.yoe} year(s) of experience.
 ${backgroundSection}
 Job Description:
@@ -64,7 +78,7 @@ You ask ONE focused question per turn. Alternate between:
 - Soft skill / behavioral questions: conflict resolution, leadership, communication style, how they handle pressure, confidence indicators
 
 ${questionInstruction}
-
+${seedSection}
 Output ONLY the next interview question. No preamble, no labels, no explanation.`;
 
   const completion = await getClient().chat.completions.create({
