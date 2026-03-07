@@ -7,13 +7,27 @@ export async function PATCH(
 ) {
   try {
     const { sessionId } = await params;
-    const { background } = await req.json();
-    if (typeof background !== "string") {
-      return NextResponse.json({ error: "background must be a string" }, { status: 400 });
+    const body = await req.json();
+    const { background, candidate_questions_asked } = body;
+
+    if (background !== undefined) {
+      if (typeof background !== "string") {
+        return NextResponse.json({ error: "background must be a string" }, { status: 400 });
+      }
+      await sql`
+        UPDATE sessions SET background = ${background}, updated_at = NOW() WHERE id = ${sessionId}
+      `;
     }
-    await sql`
-      UPDATE sessions SET background = ${background}, updated_at = NOW() WHERE id = ${sessionId}
-    `;
+
+    if (candidate_questions_asked !== undefined) {
+      if (typeof candidate_questions_asked !== "number") {
+        return NextResponse.json({ error: "candidate_questions_asked must be a number" }, { status: 400 });
+      }
+      await sql`
+        UPDATE sessions SET candidate_questions_asked = ${candidate_questions_asked}, updated_at = NOW() WHERE id = ${sessionId}
+      `;
+    }
+
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("[PATCH /api/sessions/[sessionId]]", err);

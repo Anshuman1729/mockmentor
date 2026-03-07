@@ -3,7 +3,7 @@ import { sql } from "@/lib/db";
 
 export async function POST(req: NextRequest) {
   try {
-    const { questionId, answer } = await req.json();
+    const { questionId, answer, answer_duration_sec } = await req.json();
 
     if (!questionId || answer === undefined || answer === null) {
       return NextResponse.json(
@@ -14,7 +14,9 @@ export async function POST(req: NextRequest) {
 
     const result = await sql`
       UPDATE qa_pairs
-      SET answer = ${answer}
+      SET
+        answer = ${answer},
+        answer_duration_sec = ${answer_duration_sec ?? null}
       WHERE id = ${questionId}
       RETURNING id
     `;
