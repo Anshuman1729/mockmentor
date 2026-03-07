@@ -15,6 +15,8 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import JDFallback from "./JDFallback";
 
+const COMPANY_STAGES = ["Seed", "Series A", "Series B", "Public"];
+
 const ROUND_TYPES = [
   "Technical Screen",
   "Technical Deep Dive",
@@ -32,6 +34,7 @@ export default function SetupForm() {
     company: "",
     yoe: "",
     round_type: "",
+    company_stage: "",
     jd_url: "",
     background: "",
   });
@@ -126,6 +129,7 @@ export default function SetupForm() {
           company: form.company,
           yoe: Number(form.yoe),
           round_type: form.round_type,
+          company_stage: form.company_stage || null,
           jd_content: finalJdContent,
           background: form.background || null,
         }),
@@ -207,6 +211,27 @@ export default function SetupForm() {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="company_stage">
+              Company Stage <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Select
+              value={form.company_stage}
+              onValueChange={(v) => handleChange("company_stage", v)}
+            >
+              <SelectTrigger id="company_stage">
+                <SelectValue placeholder="Select stage" />
+              </SelectTrigger>
+              <SelectContent>
+                {COMPANY_STAGES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">
