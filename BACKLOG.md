@@ -100,9 +100,19 @@
 
 ---
 
-## 🔴 Critical (Do Next — Gates Everything Downstream)
+## 🔴 Critical (Do Next)
 
-✅ All critical items complete as of 2026-03-07.
+### Intelligence DB: Grounded Questioning & Signal-Seeking Calibration
+- **Branch**: `feat/intelligence-db-fatal-flag`
+- **Plan**: `docs/plans/2026-03-07-intelligence-db-fatal-flag.md`
+- **Scope**:
+  1. Merge `intelligence-db/schema.sql` into Neon (`companies`, `question_bank`, `calibration_loops` + `qa_pairs.seed_question_id`)
+  2. CC0 ingestion script `scripts/seed-intelligence.ts` — reads `realabbas/big-companies-interview-questions`, Groq-enriches, inserts into `question_bank`
+  3. Refactor `generateNextQuestion` to pull a verified seed from DB, LLM-adapts to target uncovered signals
+  4. Fatal Flag: >30% skipped/zero-signal questions → force "No Hire", cap hire_probability ≤30
+  5. Log session-level calibration data to `calibration_loops` per debrief
+- **Why**: Closes sparse-data loophole; moves from prompt-only to grounded intelligence
+- **Complexity**: L | **Prereq**: `git clone https://github.com/realabbas/big-companies-interview-questions /tmp/realabbas-repo`
 
 ---
 
