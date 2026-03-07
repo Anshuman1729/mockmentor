@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MockMentor — AI Mock Interviews",
+  title: "PrepSignals — AI Mock Interviews",
   description:
     "Practice with AI-powered mock interviews tailored to your job description. Get structured feedback and actionable improvements.",
 };
@@ -33,7 +33,7 @@ export default function RootLayout({
           <header className="border-b bg-white px-6 py-4">
             <div className="max-w-5xl mx-auto flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-xl font-bold tracking-tight">MockMentor</span>
+                <span className="text-xl font-bold tracking-tight">PrepSignals</span>
                 <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
                   AI
                 </span>

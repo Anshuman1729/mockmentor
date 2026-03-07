@@ -1,11 +1,11 @@
-# Safe Data Manifest (MockMentor)
+# Safe Data Manifest (PrepSignals)
 
-This is the "Green List" of authorized resources that MockMentor can use **without legal obligations or restrictions**. These sources are either Public Domain (CC0) or original intellectual property derived through clean-room research.
+This is the "Green List" of authorized resources that PrepSignals can use **without legal obligations or restrictions**. These sources are either Public Domain (CC0) or original intellectual property derived through clean-room research.
 
 ---
 
 ## 1. Primary Data Sources (CC0 - Public Domain)
-*These can be directly ingested into the MockMentor database for question generation.*
+*These can be directly ingested into the PrepSignals database for question generation.*
 
 ### **A. Big Companies Interview Questions**
 - **Source:** [realabbas/big-companies-interview-questions](https://github.com/realabbas/big-companies-interview-questions)
@@ -16,7 +16,7 @@ This is the "Green List" of authorized resources that MockMentor can use **witho
   - **Google:** 500+ Questions (GCA + Technical)
   - **Microsoft:** 400+ Questions
   - **Meta:** 300+ Questions
-- **Usage Strategy:** Map `company` name in MockMentor sessions to these folders to pull "Real World" seed questions.
+- **Usage Strategy:** Map `company` name in PrepSignals sessions to these folders to pull "Real World" seed questions.
 
 ### **B. Cockroach Labs Interview Process**
 - **Source:** [cockroachlabs/open-sourced-interview-process](https://github.com/cockroachlabs/open-sourced-interview-process)
@@ -26,7 +26,7 @@ This is the "Green List" of authorized resources that MockMentor can use **witho
 
 ---
 
-## 2. Derived Intellectual Property (MockMentor Original)
+## 2. Derived Intellectual Property (PrepSignals Original)
 *These are logic-only concepts developed in this session. They are legally "clean" because they represent original implementation of industry concepts.*
 
 ### **A. The "New 8" Universal Signals**

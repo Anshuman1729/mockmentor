@@ -89,7 +89,7 @@ function buildEmailHtml(session: Session, debrief: Debrief): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>MockMentor Debrief</title></head>
+<title>PrepSignals Debrief</title></head>
 <body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:32px 16px;">
     <tr><td align="center">
@@ -98,7 +98,7 @@ function buildEmailHtml(session: Session, debrief: Debrief): string {
         <!-- Header -->
         <tr>
           <td style="background:#030712;padding:28px 32px;">
-            <p style="margin:0;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#6b7280;text-transform:uppercase;">MockMentor · Interview Signal Report</p>
+            <p style="margin:0;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#6b7280;text-transform:uppercase;">PrepSignals · Interview Signal Report</p>
             <h1 style="margin:6px 0 0;font-size:20px;font-weight:600;color:#ffffff;line-height:1.3;">
               ${session.role}
               <span style="color:#6b7280;font-weight:400;"> · ${session.company}</span>
@@ -172,7 +172,7 @@ function buildEmailHtml(session: Session, debrief: Debrief): string {
         <tr>
           <td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;">
             <p style="margin:0;font-size:11px;color:#9ca3af;text-align:center;">
-              MockMentor · AI-powered mock interviews
+              PrepSignals · AI-powered mock interviews
             </p>
           </td>
         </tr>
@@ -191,7 +191,7 @@ export async function sendDebriefEmail(session: Session, debrief: Debrief) {
   }
   try {
     await resend.emails.send({
-      from: "MockMentor <onboarding@resend.dev>",
+      from: "PrepSignals <onboarding@resend.dev>",
       to: [session.user_email],
       subject: `Your interview debrief — ${session.role} at ${session.company}`,
       html: buildEmailHtml(session, debrief),

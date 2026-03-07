@@ -2,7 +2,7 @@ export async function fetchJD(url: string): Promise<string> {
   const response = await fetch(url, {
     headers: {
       "User-Agent":
-        "Mozilla/5.0 (compatible; MockMentor/1.0; +https://mockmentor.app)",
+        "Mozilla/5.0 (compatible; PrepSignals/1.0; +https://prepsignals.app)",
       Accept: "text/html,application/xhtml+xml,*/*",
     },
     signal: AbortSignal.timeout(10000),
