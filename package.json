@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:debrief": "node --env-file=.env.local scripts/seed-test-debrief.mjs",
+    "test:debrief:live": "node --env-file=.env.local scripts/seed-test-debrief.mjs --live",
+    "test:debrief:clean": "node --env-file=.env.local scripts/seed-test-debrief.mjs --clean"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.0.1",

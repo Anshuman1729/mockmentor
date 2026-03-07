@@ -2,19 +2,25 @@ import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-interface QuestionHighlight {
-  question: string;
-  note: string;
-  positive: boolean;
+interface SkillAnalysis {
+  parameter_id: string;
+  rating: number;
+  reasoning: string;
+  evidence_quotes: string[];
 }
 
 interface Debrief {
-  verdict: string;
-  overall: string;
-  strengths: string[];
-  gaps: string[];
-  question_highlights: QuestionHighlight[];
-  closing: string;
+  summary: {
+    recommendation: string;
+    hire_probability: number;
+    overall_impression: string;
+  };
+  skill_analysis: SkillAnalysis[];
+  actionable_feedback: {
+    strengths: string[];
+    growth_areas: string[];
+    top_priority_fix: string;
+  };
 }
 
 interface Session {
@@ -25,49 +31,59 @@ interface Session {
   user_email: string;
 }
 
-const verdictColor: Record<string, string> = {
+const recommendationColor: Record<string, string> = {
   "Strong Hire": "#16a34a",
   "Hire":        "#2563eb",
-  "On the Fence":"#d97706",
+  "Borderline":  "#d97706",
   "No Hire":     "#dc2626",
 };
 
-const verdictIcon: Record<string, string> = {
-  "Strong Hire": "✓",
-  "Hire":        "✓",
-  "On the Fence":"~",
-  "No Hire":     "✗",
+const SIGNAL_NAME: Record<string, string> = {
+  TECHNICAL_DEPTH:     "Technical Depth",
+  PROBLEM_SOLVING:     "Problem Solving",
+  STAR_ALIGNMENT:      "STAR Alignment",
+  COMMUNICATION_SNR:   "Communication SNR",
+  RESULT_ORIENTATION:  "Result Orientation",
+  OWNERSHIP_ETHICS:    "Ownership & Initiative",
+  ADAPTABILITY_GROWTH: "Adaptability",
+  EDGE_CASE_MASTERY:   "Edge Case Awareness",
 };
 
+function ratingDots(rating: number): string {
+  const filled = Math.round(rating);
+  return [1, 2, 3, 4, 5]
+    .map((i) => `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${i <= filled ? "#111827" : "#e5e7eb"};margin-right:3px;"></span>`)
+    .join("");
+}
+
 function buildEmailHtml(session: Session, debrief: Debrief): string {
-  const color  = verdictColor[debrief.verdict] ?? "#6b7280";
-  const icon   = verdictIcon[debrief.verdict]  ?? "~";
-  const strengths = Array.isArray(debrief.strengths) ? debrief.strengths : [];
-  const gaps      = Array.isArray(debrief.gaps)      ? debrief.gaps      : [];
-  const highlights = Array.isArray(debrief.question_highlights)
-    ? debrief.question_highlights : [];
+  const rec   = debrief.summary?.recommendation ?? "Borderline";
+  const color = recommendationColor[rec] ?? "#6b7280";
+  const prob  = debrief.summary?.hire_probability ?? 0;
+
+  const strengths    = Array.isArray(debrief.actionable_feedback?.strengths)    ? debrief.actionable_feedback.strengths    : [];
+  const growthAreas  = Array.isArray(debrief.actionable_feedback?.growth_areas) ? debrief.actionable_feedback.growth_areas : [];
+  const topFix       = debrief.actionable_feedback?.top_priority_fix ?? "";
+  const skillAnalysis = Array.isArray(debrief.skill_analysis) ? debrief.skill_analysis.slice(0, 3) : [];
 
   const strengthRows = strengths
     .map((s) => `<li style="margin-bottom:6px;color:#374151;">&checkmark;&nbsp;${s}</li>`)
     .join("");
 
-  const gapRows = gaps
-    .map((g) => `<li style="margin-bottom:6px;color:#374151;">&#x2717;&nbsp;${g}</li>`)
+  const growthRows = growthAreas
+    .map((g) => `<li style="margin-bottom:6px;color:#374151;">&#8594;&nbsp;${g}</li>`)
     .join("");
 
-  const highlightRows = highlights
-    .map(
-      (h) => `
-      <div style="display:flex;gap:12px;margin-bottom:14px;">
-        <span style="flex-shrink:0;font-weight:700;color:${h.positive ? "#16a34a" : "#ef4444"};">
-          ${h.positive ? "+" : "−"}
-        </span>
-        <div>
-          <p style="margin:0 0 2px;font-size:12px;color:#9ca3af;font-style:italic;">"${h.question}"</p>
-          <p style="margin:0;font-size:14px;color:#374151;">${h.note}</p>
-        </div>
-      </div>`
-    )
+  const signalRows = skillAnalysis
+    .map((skill) => {
+      const quote = skill.evidence_quotes?.[0] ?? "";
+      return `
+      <div style="margin-bottom:16px;padding:14px;background:#f9fafb;border-radius:8px;border:1px solid #f3f4f6;">
+        <p style="margin:0 0 6px;font-size:10px;font-weight:600;letter-spacing:0.08em;color:#9ca3af;text-transform:uppercase;">${SIGNAL_NAME[skill.parameter_id] ?? skill.parameter_id}</p>
+        <div style="margin-bottom:6px;">${ratingDots(skill.rating)}<span style="font-size:11px;color:#6b7280;margin-left:6px;font-family:monospace;">${skill.rating}/5</span></div>
+        ${quote ? `<p style="margin:0;font-size:12px;color:#6b7280;font-style:italic;border-left:2px solid #e5e7eb;padding-left:8px;">"${quote}"</p>` : ""}
+      </div>`;
+    })
     .join("");
 
   return `<!DOCTYPE html>
@@ -82,7 +98,7 @@ function buildEmailHtml(session: Session, debrief: Debrief): string {
         <!-- Header -->
         <tr>
           <td style="background:#030712;padding:28px 32px;">
-            <p style="margin:0;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#6b7280;text-transform:uppercase;">MockMentor</p>
+            <p style="margin:0;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#6b7280;text-transform:uppercase;">MockMentor · Interview Signal Report</p>
             <h1 style="margin:6px 0 0;font-size:20px;font-weight:600;color:#ffffff;line-height:1.3;">
               ${session.role}
               <span style="color:#6b7280;font-weight:400;"> · ${session.company}</span>
@@ -97,45 +113,52 @@ function buildEmailHtml(session: Session, debrief: Debrief): string {
         <tr>
           <td style="padding:32px;">
 
-            <!-- Verdict badge -->
-            <div style="display:inline-block;padding:8px 16px;border-radius:999px;border:1px solid ${color}22;background:${color}11;margin-bottom:24px;">
-              <span style="font-size:14px;font-weight:600;color:${color};">${icon}&nbsp; ${debrief.verdict}</span>
+            <!-- Hire Probability -->
+            <div style="margin-bottom:24px;">
+              <p style="margin:0 0 6px;font-size:10px;font-weight:600;letter-spacing:0.1em;color:#9ca3af;text-transform:uppercase;">Hire Probability</p>
+              <div style="display:flex;align-items:baseline;gap:12px;">
+                <span style="font-size:48px;font-weight:700;font-family:monospace;color:#111827;line-height:1;">${prob}%</span>
+                <span style="display:inline-block;padding:4px 12px;border-radius:999px;border:1px solid ${color}33;background:${color}11;font-size:12px;font-weight:600;color:${color};">${rec}</span>
+              </div>
             </div>
 
-            <!-- Overall -->
+            <!-- Overall Impression -->
             <p style="margin:0 0 6px;font-size:10px;font-weight:600;letter-spacing:0.1em;color:#9ca3af;text-transform:uppercase;">Overall</p>
-            <p style="margin:0 0 28px;font-size:15px;color:#1f2937;line-height:1.6;">${debrief.overall}</p>
+            <p style="margin:0 0 28px;font-size:15px;color:#1f2937;line-height:1.6;">${debrief.summary?.overall_impression ?? ""}</p>
 
             <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 28px;">
 
-            <!-- Strengths & Gaps -->
+            <!-- Top 3 Signals -->
+            ${skillAnalysis.length > 0 ? `
+            <p style="margin:0 0 14px;font-size:10px;font-weight:600;letter-spacing:0.1em;color:#9ca3af;text-transform:uppercase;">Signal Highlights</p>
+            ${signalRows}
+            <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 28px;">
+            ` : ""}
+
+            <!-- Strengths & Growth Areas -->
             <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
               <tr valign="top">
                 <td width="48%">
-                  <p style="margin:0 0 10px;font-size:10px;font-weight:600;letter-spacing:0.1em;color:#9ca3af;text-transform:uppercase;">What went well</p>
-                  <ul style="margin:0;padding:0 0 0 0;list-style:none;">${strengthRows}</ul>
+                  <p style="margin:0 0 10px;font-size:10px;font-weight:600;letter-spacing:0.1em;color:#16a34a;text-transform:uppercase;">Strengths</p>
+                  <ul style="margin:0;padding:0;list-style:none;">${strengthRows}</ul>
                 </td>
                 <td width="4%"></td>
                 <td width="48%">
-                  <p style="margin:0 0 10px;font-size:10px;font-weight:600;letter-spacing:0.1em;color:#9ca3af;text-transform:uppercase;">Where to improve</p>
-                  <ul style="margin:0;padding:0 0 0 0;list-style:none;">${gapRows}</ul>
+                  <p style="margin:0 0 10px;font-size:10px;font-weight:600;letter-spacing:0.1em;color:#d97706;text-transform:uppercase;">Growth Areas</p>
+                  <ul style="margin:0;padding:0;list-style:none;">${growthRows}</ul>
                 </td>
               </tr>
             </table>
 
-            ${highlights.length > 0 ? `
+            ${topFix ? `
             <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 28px;">
 
-            <!-- Highlights -->
-            <p style="margin:0 0 14px;font-size:10px;font-weight:600;letter-spacing:0.1em;color:#9ca3af;text-transform:uppercase;">Specific moments</p>
-            ${highlightRows}
+            <!-- Top Priority Fix -->
+            <div style="background:#030712;border-radius:8px;padding:16px 20px;margin-bottom:28px;">
+              <p style="margin:0 0 6px;font-size:10px;font-weight:600;letter-spacing:0.1em;color:#6b7280;text-transform:uppercase;">Top Priority Fix</p>
+              <p style="margin:0;font-size:14px;color:#ffffff;line-height:1.6;">${topFix}</p>
+            </div>
             ` : ""}
-
-            <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 28px;">
-
-            <!-- Closing -->
-            <p style="margin:0 0 6px;font-size:10px;font-weight:600;letter-spacing:0.1em;color:#9ca3af;text-transform:uppercase;">My advice</p>
-            <p style="margin:0 0 32px;font-size:15px;color:#1f2937;line-height:1.6;font-style:italic;">"${debrief.closing}"</p>
 
             <!-- CTA -->
             <a href="https://mockmentor-mu.vercel.app"
