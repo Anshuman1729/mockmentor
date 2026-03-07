@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
     const transcription = await getClient().audio.transcriptions.create({
       file,
-      model: "whisper-large-v3",
+      model: "whisper-large-v3-turbo",
       language: "en",
       response_format: "json",
       ...(prompt ? { prompt } : {}),
