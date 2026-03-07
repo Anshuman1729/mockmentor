@@ -3,6 +3,7 @@ import { sql } from "@/lib/db";
 import { generateDebrief } from "@/lib/groq";
 import { sendDebriefEmail } from "@/lib/email";
 import { calculateNormalizedScore } from "@/lib/rubric-researched";
+import { checkFatalFlag } from "@/lib/fatal-flag";
 
 export async function POST(req: NextRequest) {
   try {
@@ -50,16 +51,43 @@ export async function POST(req: NextRequest) {
     for (const skill of debrief.skill_analysis) {
       rawScores[skill.parameter_id] = skill.rating;
     }
+    // Fix A: default any uncovered signal to 0 so calculateNormalizedScore penalises gaps
+    const ALL_SIGNALS = [
+      "TECHNICAL_DEPTH", "PROBLEM_SOLVING", "STAR_ALIGNMENT", "COMMUNICATION_SNR",
+      "RESULT_ORIENTATION", "OWNERSHIP_ETHICS", "ADAPTABILITY_GROWTH", "EDGE_CASE_MASTERY",
+    ];
+    for (const sig of ALL_SIGNALS) {
+      if (!(sig in rawScores)) rawScores[sig] = 0;
+    }
+
     const seniority = session.yoe <= 2 ? "Junior" : session.yoe <= 5 ? "Mid" : "Senior";
-    const hireProbability = calculateNormalizedScore(rawScores, seniority);
+    let hireProbability = calculateNormalizedScore(rawScores, seniority);
     const recommendation =
       hireProbability >= 80 ? "Strong Hire" :
       hireProbability >= 65 ? "Hire" :
       hireProbability >= 45 ? "Borderline" : "No Hire";
+    debrief.summary.recommendation = recommendation as typeof debrief.summary.recommendation;
+
+    // Fix B: Fatal flag — >30% zero-signal → force No Hire, cap hire_probability ≤30
+    const QUESTIONS_BY_ROUND: Record<string, number> = {
+      screening: 5, technical: 8, final: 10, behavioural: 7,
+    };
+    const totalQuestions = QUESTIONS_BY_ROUND[session.round_type?.toLowerCase()] ?? 7;
+    const fatalFlag = checkFatalFlag(
+      qas.map((qa) => ({ question_number: qa.question_number, answer: qa.answer })),
+      totalQuestions
+    );
+    if (fatalFlag.triggered) {
+      hireProbability = Math.min(hireProbability, 30);
+      debrief.summary.recommendation = "No Hire";
+      debrief.summary.overall_impression =
+        `[FATAL FLAG] ${Math.round(fatalFlag.skipRate * 100)}% of questions received zero-signal responses. ` +
+        debrief.summary.overall_impression;
+    }
 
     // Inject computed values (overwrite LLM placeholders)
     debrief.summary.hire_probability = hireProbability;
-    debrief.summary.recommendation = recommendation as typeof debrief.summary.recommendation;
+    debrief.summary.recommendation = debrief.summary.recommendation as typeof debrief.summary.recommendation;
 
     // Extract reasoning for shadow scoring (stored separately, not in user-facing debrief_data)
     const reasoning = debrief.skill_analysis.map((s) => ({
