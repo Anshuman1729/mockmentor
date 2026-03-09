@@ -146,9 +146,6 @@ export async function POST(req: NextRequest) {
     // Auto-cache: if domain-generated (no seed + has domain), store in question_bank
     // for future candidates. Fire-and-forget — do not await.
     if (!seed && session.domain) {
-      const domainSlug = (session.domain as string)
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "_");
       sql`
         INSERT INTO question_bank (company_id, question_text, round_type, domain, expected_signals, difficulty, tags, ideal_keywords)
         VALUES ('generic', ${question}, ${session.round_type}, ARRAY[${domainSlug}], '{}', 3, '{}', '{}')
