@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { generateNextQuestion, SeedQuestion } from "@/lib/groq";
+import { generateNextQuestion, generateDomainQuestion, SeedQuestion } from "@/lib/groq";
 
 const QUESTIONS_BY_ROUND: Record<string, number> = {
   screening: 5,
@@ -92,24 +92,48 @@ export async function POST(req: NextRequest) {
       console.warn("[seed lookup failed — falling back to unseeded]", e);
     }
 
-    // Generate the next question
-    const question = await generateNextQuestion(
-      {
-        role: session.role,
-        company: session.company,
-        yoe: session.yoe,
-        round_type: session.round_type,
-        jd_content: session.jd_content,
-        background: session.background,
-        total_questions: totalQuestions,
-      },
-      qas.map((qa) => ({
-        question_number: qa.question_number,
-        question: qa.question,
-        answer: qa.answer,
-      })),
-      seed ?? undefined
-    );
+    // If no seed found AND user has a domain → use domain-specific generation
+    let question: string;
+    if (!seed && session.domain) {
+      question = await generateDomainQuestion(
+        {
+          role: session.role,
+          company: session.company,
+          yoe: session.yoe,
+          round_type: session.round_type,
+          jd_content: session.jd_content,
+          background: session.background,
+          company_stage: session.company_stage,
+          domain: session.domain,
+          total_questions: totalQuestions,
+        },
+        qas.map((qa) => ({
+          question_number: qa.question_number,
+          question: qa.question,
+          answer: qa.answer,
+        }))
+      );
+    } else {
+      question = await generateNextQuestion(
+        {
+          role: session.role,
+          company: session.company,
+          yoe: session.yoe,
+          round_type: session.round_type,
+          jd_content: session.jd_content,
+          background: session.background,
+          company_stage: session.company_stage,
+          domain: session.domain,
+          total_questions: totalQuestions,
+        },
+        qas.map((qa) => ({
+          question_number: qa.question_number,
+          question: qa.question,
+          answer: qa.answer,
+        })),
+        seed ?? undefined
+      );
+    }
 
     const nextNumber = qas.length + 1;
 
@@ -118,6 +142,20 @@ export async function POST(req: NextRequest) {
       VALUES (${sessionId}, ${nextNumber}, ${question}, ${seed?.id ?? null})
       RETURNING id
     `;
+
+    // Auto-cache: if domain-generated (no seed + has domain), store in question_bank
+    // for future candidates. Fire-and-forget — do not await.
+    if (!seed && session.domain) {
+      const domainSlug = (session.domain as string)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_");
+      sql`
+        INSERT INTO question_bank (company_id, question_text, round_type, domain, expected_signals, difficulty, tags, ideal_keywords)
+        VALUES ('generic', ${question}, ${session.round_type}, ARRAY[${domainSlug}], '{}', 3, '{}', '{}')
+      `.catch((err: unknown) => {
+        console.warn("[auto-cache] failed to cache domain question:", err);
+      });
+    }
 
     return NextResponse.json({
       questionId: inserted[0].id,
