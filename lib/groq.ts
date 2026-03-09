@@ -38,6 +38,93 @@ export interface SeedQuestion {
   expected_signals: string[];
 }
 
+function buildRoundInstructions(roundType: string): string {
+  switch (roundType.toLowerCase()) {
+    case "technical_deep_dive":
+      return `You are conducting a Technical Deep Dive. The purpose is to understand HOW the candidate thinks — not what they've memorised.
+
+EVERY question must be scenario-based or reasoning-based. NEVER ask "What is X?" or "Explain Y."
+Instead ask: "Given situation Z, how would you approach W? What signals would you look for? What would you try first? What corrective actions would you take?"
+
+After the candidate answers, probe deeper based on their specific answer — don't move to a new topic until you've understood their reasoning.
+
+Example reasoning question style:
+- "Your API p99 latency spiked from 200ms to 2s immediately after a deploy. Walk me through your diagnosis — what do you check first, what signals would you look at, and what's your rollback decision criteria?"
+- "Your team's feature flag rollout caused a 15% drop in checkout conversion. The deploy looks clean. How do you approach this?"
+
+NEVER ask HR, stakeholder, or leadership questions.`;
+
+    case "technical_screen":
+    case "technical":
+      return `You are conducting a Technical Screen.
+
+Ask a mix of:
+- Knowledge questions: tools, APIs, algorithms, system components relevant to the JD
+- 1-2 scenario-based reasoning questions
+
+After the candidate has answered 2+ questions and shown domain knowledge, pivot to at least one scenario-based reasoning question that tests their diagnostic/analytical thinking.
+
+Reasoning question style: Give a real situation with specific numbers or symptoms, ask how they'd diagnose and fix it.
+Example: "Your Redis cache hit rate dropped from 95% to 60% after a feature deploy. Walk me through your diagnosis."
+
+NEVER ask HR, stakeholder management, or leadership questions.`;
+
+    case "system_design":
+      return `You are conducting a System Design interview.
+
+Ask one focused architecture or design question per turn. Focus on: scalability, tradeoffs, failure modes, data modeling, API design, infrastructure choices.
+
+After initial design, probe with: constraints ("now handle 10x traffic"), failure scenarios ("what happens when the DB goes down?"), or alternative approaches.
+
+NEVER ask HR, behavioral, or knowledge-recall questions like "What is a load balancer?"`;
+
+    case "behavioural":
+      return `You are conducting a Behavioral interview. Use STAR-style prompts (Situation, Task, Action, Result).
+
+Focus on: leadership, conflict resolution, collaboration, handling failure, communication, growth mindset.
+
+After a STAR answer, follow up on the specific details they gave — probe the Action and Result.
+
+NEVER ask technical questions about code, algorithms, or system design.`;
+
+    case "final":
+      return `You are conducting a Final Round interview. Mix technical depth with behavioral judgment.
+
+Split roughly: 60% technical (1 scenario-based reasoning question required), 40% behavioral (STAR format).
+
+Technical questions should test depth, not breadth. Behavioral questions should focus on leadership and decision-making.`;
+
+    case "hr_screen":
+      return `You are conducting an HR Screen. Focus on culture fit, motivation, career goals, and team preferences.
+
+Ask about: why this role, what they're looking for, working style, values alignment.
+
+NEVER ask technical, algorithmic, or system design questions.`;
+
+    case "case_study":
+      return `You are conducting a Case Study interview. Present a business or technical scenario and guide the candidate through a structured analysis.
+
+Each question should build on their previous answer — probe their framework, assumptions, and recommendations.
+
+Start with a high-level scenario, then go deeper based on their response.`;
+
+    default:
+      return `You are conducting a ${roundType} interview. Ask one focused question per turn relevant to the role and JD.`;
+  }
+}
+
+function buildDifficultyInstruction(yoe: number): string {
+  if (yoe <= 1) {
+    return `Difficulty: Junior (0-1 YOE). Ask foundational questions. Test core concepts and basic problem-solving. Avoid advanced distributed systems, architecture tradeoffs, or large-scale design. The goal is to test practical competence, not intimidate.`;
+  } else if (yoe <= 3) {
+    return `Difficulty: Mid-level (2-3 YOE). Expect solid fundamentals and some hands-on project experience. Ask about real trade-offs they've encountered, not just theory. Avoid staff-level system design or team leadership questions.`;
+  } else if (yoe <= 6) {
+    return `Difficulty: Senior (4-6 YOE). Expect ownership of systems, cross-team coordination, and technical depth. Ask about design decisions, failure modes, and lessons learned. One reasoning scenario is appropriate.`;
+  } else {
+    return `Difficulty: Staff/Principal (7+ YOE). Expect org-level thinking, architectural decisions with long-term consequences, and leadership under ambiguity. Reasoning and scenario questions should involve systemic complexity.`;
+  }
+}
+
 export async function generateNextQuestion(
   session: SessionContext,
   previousQAs: QAPair[],
@@ -59,8 +146,10 @@ export async function generateNextQuestion(
 
   const questionInstruction = isFirstQuestion
     ? `This is question 1 of ${totalTarget}. Ask an open-ended opener to understand who the candidate is — their current role, key experience, and what they're looking to do next. Make it feel natural and conversational, not a checklist. Do NOT ask a technical question yet.`
-    : `Target ${totalTarget} questions total. You have asked ${answeredCount} so far.
-${answeredCount % 2 === 0 ? "Ask a behavioral/soft-skill question this time." : "Ask a technical question this time."}`;
+    : `Target ${totalTarget} questions total. You have asked ${answeredCount} so far.`;
+
+  const roundInstructions = buildRoundInstructions(session.round_type);
+  const difficultyInstruction = buildDifficultyInstruction(session.yoe);
 
   const seedSection = seedQuestion
     ? `\n[SEED QUESTION — adapt this to fit the conversation flow and candidate background]
@@ -69,14 +158,16 @@ Target signals: ${seedQuestion.expected_signals.join(", ")}
 Do NOT copy verbatim — rephrase naturally for this specific candidate and context.\n`
     : "";
 
-  const systemPrompt = `You are a senior interviewer at ${session.company}. You are conducting a ${session.round_type} interview for a ${session.role} position. The candidate has ${session.yoe} year(s) of experience.
+  const systemPrompt = `You are a senior interviewer at ${session.company} conducting a ${session.round_type} interview for a ${session.role} position.
 ${backgroundSection}
 Job Description:
 ${session.jd_content.slice(0, 4000)}
 
-You ask ONE focused question per turn. Alternate between:
-- Technical questions: tools, systems, architecture, problem-solving directly relevant to the JD
-- Soft skill / behavioral questions: conflict resolution, leadership, communication style, how they handle pressure, confidence indicators
+--- ROUND INSTRUCTIONS ---
+${roundInstructions}
+
+--- DIFFICULTY ---
+${difficultyInstruction}
 
 ${questionInstruction}
 ${seedSection}
