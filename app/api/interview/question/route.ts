@@ -51,11 +51,14 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Look up a seed question for this company + round, excluding already-used seeds
+    // Look up a seed question — priority: domain → company → generic
     const usedSeedIds = qas
       .map((qa) => qa.seed_question_id)
       .filter(Boolean) as string[];
     const companySlug = session.company.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const domainSlug = session.domain
+      ? (session.domain as string).toLowerCase().replace(/[^a-z0-9]+/g, "_")
+      : null;
     const excludeIds =
       usedSeedIds.length > 0
         ? usedSeedIds
@@ -68,14 +71,19 @@ export async function POST(req: NextRequest) {
         FROM question_bank q
         JOIN companies c ON c.id = q.company_id
         WHERE q.round_type = ${session.round_type}
+          AND q.id != ALL(${excludeIds}::uuid[])
           AND (
-            c.id = ${companySlug}
+            (${domainSlug} IS NOT NULL AND ${domainSlug} = ANY(q.domain))
+            OR c.id = ${companySlug}
             OR c.name ILIKE ${session.company}
             OR c.id = 'generic'
           )
-          AND q.id != ALL(${excludeIds}::uuid[])
         ORDER BY
-          CASE WHEN c.id = ${companySlug} OR c.name ILIKE ${session.company} THEN 0 ELSE 1 END,
+          CASE
+            WHEN ${domainSlug} IS NOT NULL AND ${domainSlug} = ANY(q.domain) THEN 0
+            WHEN c.id = ${companySlug} OR c.name ILIKE ${session.company} THEN 1
+            ELSE 2
+          END,
           RANDOM()
         LIMIT 1
       `;
