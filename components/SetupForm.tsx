@@ -35,6 +35,7 @@ export default function SetupForm() {
     yoe: "",
     round_type: "",
     company_stage: "",
+    domain: "",
     jd_url: "",
     background: "",
   });
@@ -130,6 +131,7 @@ export default function SetupForm() {
           yoe: Number(form.yoe),
           round_type: form.round_type,
           company_stage: form.company_stage || null,
+          domain: form.domain || null,
           jd_content: finalJdContent,
           background: form.background || null,
         }),
@@ -232,6 +234,22 @@ export default function SetupForm() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="domain">
+              Domain / Specialization{" "}
+              <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Input
+              id="domain"
+              placeholder="e.g. Battery Management Systems, ML Infra"
+              value={form.domain}
+              onChange={(e) => handleChange("domain", e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Helps us pick domain-specific questions. Leave blank for general software engineering.
+            </p>
           </div>
 
           <div className="space-y-2">
