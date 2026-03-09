@@ -105,13 +105,13 @@ export async function generateDomainQuestion(
   session: SessionContext,
   previousQAs: QAPair[]
 ): Promise<string> {
+  const domain = session.domain ?? "technical";
+
+  const answeredQAs = previousQAs.filter((qa) => qa.answer !== null);
   const previousQABlock =
-    previousQAs.length > 0
-      ? `\n[PREVIOUS Q&As]\n${previousQAs
-          .map(
-            (qa) =>
-              `Q${qa.question_number}: ${qa.question}\nA: ${qa.answer ?? "(no answer)"}`
-          )
+    answeredQAs.length > 0
+      ? `\n[PREVIOUS Q&As]\n${answeredQAs
+          .map((qa) => `Q${qa.question_number}: ${qa.question}\nA: ${qa.answer}`)
           .join("\n\n")}\n`
       : "";
 
@@ -135,20 +135,20 @@ Q: "Your distributed training job is experiencing gradient staleness with async 
     messages: [
       {
         role: "system",
-        content: `You are a senior ${session.domain} technical interviewer conducting a ${session.round_type} interview at ${session.company}.
+        content: `You are a senior ${domain} technical interviewer conducting a ${session.round_type} interview at ${session.company}.
 
 ${fewShotExamples}
 ${companyContextBlock}
 RULES:
 - Ask one question only. No preamble.
-- Questions must require deep ${session.domain} expertise — a generic backend interviewer should not know to ask this.
+- Questions must require deep ${domain} expertise — a generic backend interviewer should not know to ask this.
 - Adapt depth to YOE: ${session.yoe} years of experience.
 - Do not repeat topics from previous Q&As.${session.jd_content ? `\n- Stay relevant to the JD: ${session.jd_content.slice(0, 800)}` : ""}${session.background ? `\n- Tailor to candidate background: ${session.background.slice(0, 500)}` : ""}`,
       },
       {
         role: "user",
         content: `${previousQABlock}
-Ask the next ${session.domain} interview question. Return only the question text, nothing else.`,
+Ask the next ${domain} interview question. Return only the question text, nothing else.`,
       },
     ],
   });
