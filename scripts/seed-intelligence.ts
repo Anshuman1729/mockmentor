@@ -15,6 +15,29 @@ const BACKEND_DEV_README =
   "/tmp/Back-End-Developer-Interview-Questions/README.md";
 const MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
 
+const DOMAIN_SEEDS = [
+  {
+    slug: "embedded_bms",
+    name: "Embedded Systems / Battery Management Systems",
+    description: "embedded C/C++, RTOS, CAN/SPI/I2C protocols, BMS algorithms (SOC/SOH estimation), power electronics, hardware-software co-design, firmware OTA updates",
+  },
+  {
+    slug: "ml_ai_infra",
+    name: "ML / AI Infrastructure",
+    description: "model training pipelines, distributed training (PyTorch DDP, FSDP), MLOps, model serving, feature stores, vector databases, inference optimization (quantization, pruning, distillation)",
+  },
+  {
+    slug: "data_platforms",
+    name: "Data Platforms",
+    description: "data warehousing (BigQuery, Snowflake, Redshift), streaming (Kafka, Flink, Spark), ETL/ELT pipelines, data modeling, lakehouse architecture, dbt, Apache Airflow",
+  },
+  {
+    slug: "devops_platform",
+    name: "DevOps / Platform Engineering",
+    description: "Kubernetes, CI/CD pipelines, infrastructure as code (Terraform, Pulumi), SRE practices, observability (OpenTelemetry, Prometheus, Grafana), service mesh, GitOps",
+  },
+];
+
 const TOP_COMPANIES = [
   { id: "google", name: "Google" },
   { id: "amazon", name: "Amazon" },
@@ -231,6 +254,62 @@ Return:
   }));
 }
 
+// Phase D: Domain-specific question generation
+async function generateDomainQuestions(
+  client: Groq,
+  domain: { slug: string; name: string; description: string },
+  roundType: string
+): Promise<EnrichedQuestion[]> {
+  const roundDesc =
+    roundType === "technical"
+      ? `highly technical, domain-specific questions that a generic backend interviewer would NOT know to ask`
+      : `STAR-format behavioral questions specific to challenges and culture of working in this domain`;
+
+  const completion = await client.chat.completions.create({
+    model: MODEL,
+    max_tokens: 2000,
+    messages: [
+      {
+        role: "system",
+        content: `You are a senior ${domain.name} interviewer. Return raw JSON only — no markdown.`,
+      },
+      {
+        role: "user",
+        content: `Generate 6 ${roundType} interview questions for a ${domain.name} engineer.
+Domain context: ${domain.description}
+
+Generate ${roundDesc}. Questions must require deep domain expertise.
+
+Return:
+{
+  "questions": [
+    {
+      "question_text": "The complete question",
+      "ideal_keywords": ["3-5 key domain-specific terms"],
+      "expected_signals": ["1-3 from: TECHNICAL_DEPTH, PROBLEM_SOLVING, STAR_ALIGNMENT, COMMUNICATION_SNR, RESULT_ORIENTATION, OWNERSHIP_ETHICS, ADAPTABILITY_GROWTH, EDGE_CASE_MASTERY"],
+      "difficulty": 4,
+      "tags": ["domain-specific-tag"]
+    }
+  ]
+}`,
+      },
+    ],
+  });
+
+  const raw = completion.choices[0].message.content?.trim() ?? "";
+  const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+  const parsed = JSON.parse(jsonStr);
+
+  return ((parsed.questions ?? []) as Array<{ question_text: string; ideal_keywords?: string[]; expected_signals?: string[]; difficulty?: number; tags?: string[] }>).map((q) => ({
+    text: q.question_text,
+    round_type: roundType,
+    ideal_keywords: q.ideal_keywords ?? [],
+    expected_signals: q.expected_signals ?? [],
+    difficulty: q.difficulty ?? 4,
+    tags: q.tags ?? [],
+  }));
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -320,8 +399,34 @@ async function main() {
     }
   }
 
+  // --- Phase D: Domain-specific questions ---
+  console.log("\n[domain] Generating domain-specific questions...");
+  let domainInserted = 0;
+
+  for (const domain of DOMAIN_SEEDS) {
+    console.log(`\n[domain] ${domain.name}`);
+    for (const roundType of ["technical", "behavioural"]) {
+      try {
+        console.log(`  [generating] ${roundType}...`);
+        const questions = await generateDomainQuestions(client, domain, roundType);
+        for (const q of questions) {
+          await sql`
+            INSERT INTO question_bank (company_id, question_text, round_type, domain, tags, difficulty, ideal_keywords, expected_signals)
+            VALUES ('generic', ${q.text}, ${q.round_type}, ARRAY[${domain.slug}], ${q.tags}, ${q.difficulty}, ${q.ideal_keywords}, ${q.expected_signals})
+          `;
+          domainInserted++;
+        }
+        console.log(`  [inserted] ${questions.length} questions`);
+      } catch (err) {
+        console.error(`  [error] ${domain.name}/${roundType}:`, err);
+      }
+      await sleep(500);
+    }
+  }
+  console.log(`\n[domain] Seeded ${domainInserted} domain questions.`);
+
   console.log(
-    `\n✅ Done. Seeded ${totalInserted} total questions across generic + ${TOP_COMPANIES.length} companies.`
+    `\n✅ Done. Seeded ${totalInserted} generic+company questions + ${domainInserted} domain questions.`
   );
   process.exit(0);
 }
