@@ -29,6 +29,7 @@ export interface SessionContext {
   background?: string | null;
   total_questions?: number;
   company_stage?: string | null;
+  domain?: string | null;
 }
 
 export interface SeedQuestion {
@@ -94,6 +95,68 @@ Output ONLY the next interview question. No preamble, no labels, no explanation.
   });
 
   return completion.choices[0].message.content?.trim() ?? "";
+}
+
+/**
+ * Generate a domain-specific question when no seed exists for the user's domain.
+ * Called only when: seed === null AND session.domain is set.
+ */
+export async function generateDomainQuestion(
+  session: SessionContext,
+  previousQAs: QAPair[]
+): Promise<string> {
+  const previousQABlock =
+    previousQAs.length > 0
+      ? `\n[PREVIOUS Q&As]\n${previousQAs
+          .map(
+            (qa) =>
+              `Q${qa.question_number}: ${qa.question}\nA: ${qa.answer ?? "(no answer)"}`
+          )
+          .join("\n\n")}\n`
+      : "";
+
+  const companyContextBlock = session.company_stage
+    ? `\n[COMPANY CONTEXT]\n- Company stage: ${session.company_stage}\n- Seed/Series A companies prize ownership + breadth; Series B/Public companies prize depth + scalability.\n`
+    : "";
+
+  const fewShotExamples = `
+[FEW-SHOT EXAMPLES — domain-specific depth]
+
+Example 1 (Embedded/BMS, Technical):
+Q: "Walk me through how you'd design a State of Charge estimation algorithm for a lithium-ion battery pack. What are the tradeoffs between Coulomb counting and Extended Kalman Filter approaches, and when would you choose each?"
+
+Example 2 (ML Infra, Technical):
+Q: "Your distributed training job is experiencing gradient staleness with async SGD across 64 GPUs. How do you diagnose whether this is a network bottleneck vs compute imbalance, and what architectural changes would you make?"
+`;
+
+  const completion = await getClient().chat.completions.create({
+    model: MODEL,
+    max_tokens: 300,
+    messages: [
+      {
+        role: "system",
+        content: `You are a senior ${session.domain} technical interviewer conducting a ${session.round_type} interview at ${session.company}.
+
+${fewShotExamples}
+${companyContextBlock}
+RULES:
+- Ask one question only. No preamble.
+- Questions must require deep ${session.domain} expertise — a generic backend interviewer should not know to ask this.
+- Adapt depth to YOE: ${session.yoe} years of experience.
+- Do not repeat topics from previous Q&As.${session.jd_content ? `\n- Stay relevant to the JD: ${session.jd_content.slice(0, 800)}` : ""}${session.background ? `\n- Tailor to candidate background: ${session.background.slice(0, 500)}` : ""}`,
+      },
+      {
+        role: "user",
+        content: `${previousQABlock}
+Ask the next ${session.domain} interview question. Return only the question text, nothing else.`,
+      },
+    ],
+  });
+
+  return (
+    completion.choices[0].message.content?.trim() ??
+    "Tell me about a challenging technical problem you solved in your domain."
+  );
 }
 
 export interface SkillAnalysis {
