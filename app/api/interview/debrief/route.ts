@@ -96,9 +96,21 @@ export async function POST(req: NextRequest) {
 
     // Fix B: Fatal flag — >30% zero-signal → force No Hire, cap hire_probability ≤30
     const QUESTIONS_BY_ROUND: Record<string, number> = {
-      screening: 5, technical: 8, final: 10, behavioural: 7,
+      technical_screen: 5, technical_deep_dive: 8, system_design: 6,
+      behavioural: 7, final: 8, hr_screen: 5, case_study: 5,
+      // legacy keys for old sessions
+      screening: 5, technical: 8,
     };
-    const totalQuestions = QUESTIONS_BY_ROUND[session.round_type?.toLowerCase()] ?? 7;
+    const normalizedRound = (() => {
+      const map: Record<string, string> = {
+        "technical screen": "technical_screen", "technical deep dive": "technical_deep_dive",
+        "system design": "system_design", "behavioral": "behavioural",
+        "final round": "final", "hr screen": "hr_screen", "case study": "case_study",
+        "screening": "screening", "technical": "technical",
+      };
+      return map[(session.round_type ?? "").toLowerCase()] ?? session.round_type?.toLowerCase() ?? "technical_screen";
+    })();
+    const totalQuestions = QUESTIONS_BY_ROUND[normalizedRound] ?? 7;
     const fatalFlag = checkFatalFlag(
       qas.map((qa) => ({ question_number: qa.question_number, answer: qa.answer })),
       totalQuestions
