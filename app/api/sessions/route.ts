@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     const user_email =
       user?.emailAddresses[0]?.emailAddress ?? `${userId}@clerk.dev`;
 
-    const { role, company, yoe, round_type, jd_content, background, company_stage } =
+    const { role, company, yoe, round_type, jd_content, background, company_stage, domain } =
       await req.json();
 
     if (!role || !company || !yoe || !round_type || !jd_content) {
@@ -59,8 +59,8 @@ export async function POST(req: NextRequest) {
     }
 
     const rows = await sql`
-      INSERT INTO sessions (user_email, role, company, yoe, round_type, jd_content, background, company_stage)
-      VALUES (${user_email}, ${role}, ${company}, ${Number(yoe)}, ${round_type}, ${jd_content}, ${background ?? null}, ${company_stage ?? null})
+      INSERT INTO sessions (user_email, role, company, yoe, round_type, jd_content, background, company_stage, domain)
+      VALUES (${user_email}, ${role}, ${company}, ${Number(yoe)}, ${round_type}, ${jd_content}, ${background ?? null}, ${company_stage ?? null}, ${domain ?? null})
       RETURNING id
     `;
 
