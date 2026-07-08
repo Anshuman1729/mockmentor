@@ -87,7 +87,7 @@ function DebriefLoadingScreen() {
 
 export default function InterviewRoom({ sessionId }: { sessionId: string }) {
   const router = useRouter();
-  const { speak, cancel: cancelTTS, isSpeaking } = useTTS();
+  const { speak, cancel: cancelTTS, isSpeaking, rate, cycleRate, muted, toggleMute } = useTTS();
   const {
     start: startSTT,
     stop: stopSTT,
@@ -510,27 +510,47 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
         {error && <p className="text-xs text-red-400 text-center px-6 pb-2">{error}</p>}
 
         <div className="flex flex-wrap items-center justify-between gap-y-2 px-6 py-4 border-t border-white/10 bg-black/30">
-          <div className="flex items-center gap-2 min-w-24">
-            {sttSupported ? (
-              isListening ? (
-                <>
-                  <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />
-                  <span className="text-green-300 text-xs font-medium">Listening</span>
-                </>
-              ) : isRecording ? (
-                <>
-                  <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse" />
-                  <span className="text-blue-300 text-xs font-medium">Recording answer</span>
-                </>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 min-w-24">
+              {sttSupported ? (
+                isListening ? (
+                  <>
+                    <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />
+                    <span className="text-green-300 text-xs font-medium">Listening</span>
+                  </>
+                ) : isRecording ? (
+                  <>
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse" />
+                    <span className="text-blue-300 text-xs font-medium">Recording answer</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-2.5 h-2.5 rounded-full bg-gray-600" />
+                    <span className="text-gray-500 text-xs">Mic off</span>
+                  </>
+                )
               ) : (
-                <>
-                  <span className="w-2.5 h-2.5 rounded-full bg-gray-600" />
-                  <span className="text-gray-500 text-xs">Mic off</span>
-                </>
-              )
-            ) : (
-              <span className="text-xs text-amber-400">Text mode</span>
-            )}
+                <span className="text-xs text-amber-400">Text mode</span>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={cycleRate}
+              title="Interviewer voice speed"
+              className="text-white/60 hover:text-white hover:bg-white/10 text-xs h-8 px-2"
+            >
+              {rate}x
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleMute}
+              title={muted ? "Unmute interviewer voice" : "Mute interviewer voice"}
+              className="text-white/60 hover:text-white hover:bg-white/10 text-xs h-8 px-2"
+            >
+              {muted ? "🔇" : "🔈"}
+            </Button>
           </div>
           <Button
             size="sm"
@@ -699,28 +719,48 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       {/* ── Controls bar ── */}
       <div className="flex flex-wrap items-center justify-between gap-y-2 px-6 py-4 border-t border-white/10 bg-black/30">
 
-        {/* Mic indicator */}
-        <div className="flex items-center gap-2 min-w-24">
-          {sttSupported ? (
-            isListening ? (
-              <>
-                <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />
-                <span className="text-green-300 text-xs font-medium">Listening</span>
-              </>
-            ) : isRecording ? (
-              <>
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse" />
-                <span className="text-blue-300 text-xs font-medium">Recording answer</span>
-              </>
+        {/* Mic indicator + interviewer voice controls */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 min-w-24">
+            {sttSupported ? (
+              isListening ? (
+                <>
+                  <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />
+                  <span className="text-green-300 text-xs font-medium">Listening</span>
+                </>
+              ) : isRecording ? (
+                <>
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse" />
+                  <span className="text-blue-300 text-xs font-medium">Recording answer</span>
+                </>
+              ) : (
+                <>
+                  <span className="w-2.5 h-2.5 rounded-full bg-gray-600" />
+                  <span className="text-gray-500 text-xs">Mic off</span>
+                </>
+              )
             ) : (
-              <>
-                <span className="w-2.5 h-2.5 rounded-full bg-gray-600" />
-                <span className="text-gray-500 text-xs">Mic off</span>
-              </>
-            )
-          ) : (
-            <span className="text-xs text-amber-400">Text mode</span>
-          )}
+              <span className="text-xs text-amber-400">Text mode</span>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={cycleRate}
+            title="Interviewer voice speed"
+            className="text-white/60 hover:text-white hover:bg-white/10 text-xs h-8 px-2"
+          >
+            {rate}x
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={toggleMute}
+            title={muted ? "Unmute interviewer voice" : "Mute interviewer voice"}
+            className="text-white/60 hover:text-white hover:bg-white/10 text-xs h-8 px-2"
+          >
+            {muted ? "🔇" : "🔈"}
+          </Button>
         </div>
 
         {/* Buttons */}

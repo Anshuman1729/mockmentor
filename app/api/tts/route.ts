@@ -4,10 +4,15 @@ import { NextRequest, NextResponse } from "next/server";
 // Voice: "arvind" — clear professional male voice
 export async function POST(req: NextRequest) {
   try {
-    const { text } = await req.json();
+    const { text, pace } = await req.json();
     if (!text?.trim()) {
       return NextResponse.json({ error: "text is required" }, { status: 400 });
     }
+
+    // Clamp to a safe range regardless of what the client sends —
+    // UI only exposes 0.75x-1.5x, this is defense in depth.
+    const requestedPace = typeof pace === "number" && Number.isFinite(pace) ? pace : 1.0;
+    const clampedPace = Math.min(2.0, Math.max(0.5, requestedPace));
 
     const apiKey = process.env.SARVAM_API_KEY;
     if (!apiKey) {
@@ -27,7 +32,7 @@ export async function POST(req: NextRequest) {
         text,
         target_language_code: "en-IN",
         speaker: "karun",
-        pace: 1.0,
+        pace: clampedPace,
         speech_sample_rate: 22050,
         enable_preprocessing: true,
         model: "bulbul:v2",
