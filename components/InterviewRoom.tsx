@@ -302,8 +302,8 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       answerText = fallbackText.trim();
     }
 
-    if (!answerText) {
-      setError("No answer captured. Please speak and try again.");
+    if (!answerText || answerText.trim().length < 50) {
+      setError("Please give a more complete answer (at least 50 characters) before continuing.");
       setRoomState("listening");
       startSTT();
       await startRecording();

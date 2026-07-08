@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 
+const MIN_ANSWER_LENGTH = 50;
+
 export async function POST(req: NextRequest) {
   try {
     const { questionId, answer, answer_duration_sec } = await req.json();
@@ -8,6 +10,13 @@ export async function POST(req: NextRequest) {
     if (!questionId || answer === undefined || answer === null) {
       return NextResponse.json(
         { error: "questionId and answer are required" },
+        { status: 400 }
+      );
+    }
+
+    if (typeof answer !== "string" || answer.trim().length < MIN_ANSWER_LENGTH) {
+      return NextResponse.json(
+        { error: `Answer must be at least ${MIN_ANSWER_LENGTH} characters.` },
         { status: 400 }
       );
     }
