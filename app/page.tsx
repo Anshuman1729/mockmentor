@@ -210,8 +210,8 @@ export default async function LandingPage() {
                 { label: "Business Impact Framing", score: 4, max: 5 },
                 { label: "Ownership & Accountability", score: 3, max: 5 },
               ].map((signal) => (
-                <div key={signal.label} className="flex items-center gap-3">
-                  <span className="text-sm text-gray-700 w-52 flex-shrink-0">
+                <div key={signal.label} className="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1">
+                  <span className="text-sm text-gray-700 w-full sm:w-52 sm:flex-shrink-0">
                     {signal.label}
                   </span>
                   <div className="flex gap-1">

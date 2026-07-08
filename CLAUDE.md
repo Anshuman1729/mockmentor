@@ -108,9 +108,9 @@ npm run test:debrief:clean   # delete test sessions, seed fresh
 | qa_pairs.seed_question_id column | ✅ Done (PR 1) |
 | Fatal Flag: >30% zero-signal → force No Hire | ✅ Done (PR 1) |
 | Missing-signal rawScores defaulted to 0 | ✅ Done (PR 1) |
-| CC0 ingestion script (`scripts/seed-intelligence.ts`) | ⬜ PR 2 |
-| Signal-Seeking Seeding in `generateNextQuestion` | ⬜ PR 2 |
-| Calibration loop logging per session | ⬜ PR 2 |
+| CC0 ingestion script (`scripts/seed-intelligence.ts`) | ✅ Code complete (PR 2) — needs live seed run to verify |
+| Signal-Seeking Seeding in `generateNextQuestion` | ✅ Done (PR 2) — seed fetched in question route (domain→company→generic), injected into prompt, `seed_question_id` persisted |
+| Calibration loop logging per session | 🟡 Partial (PR 2) — debrief route logs `ai_score` + `llm_reasoning`; outcome API does NOT yet backfill `actual_outcome`/`discrepancy_score` into `calibration_loops` |
 
 ### Week 3+ — Monetisation
 - Free (₹0): 1 mock, basic debrief, limited signals

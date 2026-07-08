@@ -29,6 +29,42 @@ export async function POST(req: NextRequest) {
       SELECT * FROM qa_pairs WHERE session_id = ${sessionId} ORDER BY question_number ASC
     `;
 
+    // Round-type → total question count, shared by the completeness gate below
+    // and the Fatal Flag check further down.
+    const QUESTIONS_BY_ROUND: Record<string, number> = {
+      technical_screen: 5, technical_deep_dive: 8, system_design: 6,
+      behavioural: 7, final: 8, hr_screen: 5, case_study: 5,
+      // legacy keys for old sessions
+      screening: 5, technical: 8,
+    };
+    const normalizedRound = (() => {
+      const map: Record<string, string> = {
+        "technical screen": "technical_screen", "technical deep dive": "technical_deep_dive",
+        "system design": "system_design", "behavioral": "behavioural",
+        "final round": "final", "hr screen": "hr_screen", "case study": "case_study",
+        "screening": "screening", "technical": "technical",
+      };
+      return map[(session.round_type ?? "").toLowerCase()] ?? session.round_type?.toLowerCase() ?? "technical_screen";
+    })();
+    const totalQuestions = QUESTIONS_BY_ROUND[normalizedRound] ?? 7;
+
+    // Completeness gate: any skipped (unanswered) question blocks report
+    // generation entirely — zero tolerance, distinct from Fatal Flag's
+    // post-hoc score penalty for weak-but-complete sessions.
+    const hasIncompleteAnswer =
+      qas.some((qa) => qa.answer === null) || qas.length < totalQuestions;
+    if (hasIncompleteAnswer) {
+      return NextResponse.json(
+        {
+          error: "Interview incomplete — every question must be answered before a report can be generated.",
+          code: "INCOMPLETE_SESSION",
+          answeredCount: qas.filter((qa) => qa.answer !== null).length,
+          totalQuestions,
+        },
+        { status: 422 }
+      );
+    }
+
     const { report: debrief, usage } = await generateDebrief(
       {
         role: session.role,
@@ -95,22 +131,6 @@ export async function POST(req: NextRequest) {
     debrief.summary.recommendation = recommendation as typeof debrief.summary.recommendation;
 
     // Fix B: Fatal flag — >30% zero-signal → force No Hire, cap hire_probability ≤30
-    const QUESTIONS_BY_ROUND: Record<string, number> = {
-      technical_screen: 5, technical_deep_dive: 8, system_design: 6,
-      behavioural: 7, final: 8, hr_screen: 5, case_study: 5,
-      // legacy keys for old sessions
-      screening: 5, technical: 8,
-    };
-    const normalizedRound = (() => {
-      const map: Record<string, string> = {
-        "technical screen": "technical_screen", "technical deep dive": "technical_deep_dive",
-        "system design": "system_design", "behavioral": "behavioural",
-        "final round": "final", "hr screen": "hr_screen", "case study": "case_study",
-        "screening": "screening", "technical": "technical",
-      };
-      return map[(session.round_type ?? "").toLowerCase()] ?? session.round_type?.toLowerCase() ?? "technical_screen";
-    })();
-    const totalQuestions = QUESTIONS_BY_ROUND[normalizedRound] ?? 7;
     const fatalFlag = checkFatalFlag(
       qas.map((qa) => ({ question_number: qa.question_number, answer: qa.answer })),
       totalQuestions
