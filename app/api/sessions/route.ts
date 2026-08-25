@@ -22,8 +22,7 @@ export async function GET(_req: NextRequest) {
         s.round_type,
         s.created_at,
         s.status,
-        d.debrief_data->>'hire_recommendation' AS hire_recommendation,
-        (d.debrief_data->>'hire_probability')::int AS hire_probability
+        d.debrief_data->>'hire_recommendation' AS hire_recommendation
       FROM sessions s
       LEFT JOIN debriefs d ON d.session_id = s.id
       WHERE s.user_email = ${user_email}
