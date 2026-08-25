@@ -177,73 +177,137 @@ const MOCK_DEBRIEF = {
   },
 };
 
-// ---- Strong Hire scenario — every signal rated 4-5, so model_answers and
-// the per-card framework callouts should both be empty. Checks that those
-// sections degrade to "nothing rendered" instead of an empty box/heading.
-const STRONG_HIRE_DEBRIEF = {
-  ...MOCK_DEBRIEF,
+// ---- Strong Hire scenario — every signal independently written for a 5/5
+// performance (NOT derived from the borderline scenario's text — an earlier
+// version of this fixture reused MOCK_DEBRIEF's reasoning/evidence verbatim
+// and just overrode the rating number, which a persona review correctly
+// called out as a real reasoning/score mismatch risk, even though it was
+// purely a fixture bug and not a generateDebrief prompt issue). Every
+// signal here is 4-5, so model_answers and the per-card framework callouts
+// should both be empty — checks that those sections degrade to "nothing
+// rendered" instead of an empty box/heading.
+const STRONG_HIRE_DEBRIEF: NewDebrief = {
   summary: {
-    recommendation: "Strong Hire" as const,
+    recommendation: "Strong Hire",
     hire_probability: 91,
     overall_impression:
       "Consistently exceptional across every signal — SME-level technical depth, quantified results in nearly every answer, and proactive ownership without being asked. This is one of the strongest transcripts in the sample.",
   },
-  skill_analysis: MOCK_DEBRIEF.skill_analysis.map((s) => ({
-    ...s,
-    rating: 5,
-    reasoning: s.reasoning.replace(/\.$/, "") + " — consistently the strongest possible version of this signal throughout the session.",
-  })),
-  question_walkthrough: MOCK_DEBRIEF.question_walkthrough.map((q) => ({
-    ...q,
-    key_takeaway: q.key_takeaway,
-  })),
+  metrics: {
+    talk_to_listen_ratio: "68/32",
+    avg_response_latency_sec: 1.7,
+    signal_to_noise_ratio: 0.24,
+    interruption_count: 0,
+  },
+  skill_analysis: [
+    { parameter_id: "TECHNICAL_DEPTH", rating: 5, reasoning: "Explained partition assignment, cache eviction trade-offs, and a specific incident's root cause without being prompted — SME-level depth an interviewer doesn't have to extract.", evidence_quotes: ["We used a sticky partition assignor because round-robin was causing multi-second rebalance gaps during deploys", "I chose an LRU eviction policy over TTL because our access pattern was heavily skewed toward recently-viewed items"] },
+    { parameter_id: "PROBLEM_SOLVING", rating: 5, reasoning: "Asked clarifying questions before proposing a diagnosis in every ambiguous scenario, then reasoned through two competing hypotheses out loud before committing.", evidence_quotes: ["Before I answer — is this a gradual degradation or a sudden spike?", "If it's sudden I'd check recent deploys first, then network, then downstream dependencies in that order"] },
+    { parameter_id: "STAR_ALIGNMENT", rating: 5, reasoning: "Every story closed with a quantified Result directly tied to the Action taken, not a vague 'it went well'.", evidence_quotes: ["That cut our p99 latency by 30 percent within the same sprint", "We caught it in the logs before anyone filed a ticket and shipped the fix same-day"] },
+    { parameter_id: "COMMUNICATION_SNR", rating: 5, reasoning: "Answer-first throughout — led with the conclusion, then backed it with two or three specifics, and stopped instead of restating.", evidence_quotes: ["Short answer: yes, and here's why", "The trade-off was write throughput, which we accepted and scaled around with read replicas"] },
+    { parameter_id: "RESULT_ORIENTATION", rating: 4, reasoning: "Quantified outcomes in four of five answers with hard numbers; one answer described a strong process without closing on an explicit metric.", evidence_quotes: ["that cut our p99 latency by about 30 percent", "we rolled that out and it held up fine, though I don't have an exact number on adoption"] },
+    { parameter_id: "OWNERSHIP_ETHICS", rating: 5, reasoning: "Volunteered a story about catching and fixing their own production bug before it was reported, and explicitly credited the team rather than taking sole credit.", evidence_quotes: ["I caught it myself in the logs before anyone filed a ticket, so I just fixed it and wrote up what happened", "I didn't wait for someone to assign it to me"] },
+    { parameter_id: "ADAPTABILITY_GROWTH", rating: 5, reasoning: "Took a correction from the interviewer mid-answer, incorporated it immediately without getting defensive, and named the specific adjustment.", evidence_quotes: ["Oh good catch, yeah that would race — I'd add a lock there", "That's a fair point, let me revise that"] },
+    { parameter_id: "EDGE_CASE_MASTERY", rating: 4, reasoning: "Proactively named a failure mode in two of three system questions before being asked; the third stayed at the happy path until prompted.", evidence_quotes: ["the one thing I'd worry about is a partial write if the process dies mid-flush", "if that failed we'd need a retry with backoff, though honestly I hadn't thought about it until now"] },
+  ],
+  question_walkthrough: [
+    { question_number: 1, key_takeaway: "Opened with a specific, quantified win (p99 latency cut) instead of a generic self-intro — set a strong first impression immediately.", signal_ids: ["TECHNICAL_DEPTH", "RESULT_ORIENTATION"] },
+    { question_number: 2, key_takeaway: "Named the partition-assignor trade-off unprompted — this is the single strongest technical moment in the transcript, the kind of detail that separates 'used the tool' from 'understands the tool'.", signal_ids: ["TECHNICAL_DEPTH", "PROBLEM_SOLVING"] },
+    { question_number: 3, key_takeaway: "Told the production-bug story with full ownership and a same-day fix, without waiting to be asked — textbook proactive ownership.", signal_ids: ["OWNERSHIP_ETHICS", "STAR_ALIGNMENT"] },
+    { question_number: 4, key_takeaway: "Took a live correction on a race condition well, revised the answer on the spot instead of getting defensive.", signal_ids: ["ADAPTABILITY_GROWTH"] },
+    { question_number: 5, key_takeaway: "Walked the happy path fluently and named one failure mode unprompted, though didn't go further until asked — the one place this session stayed at 'very good' instead of 'exceptional'.", signal_ids: ["EDGE_CASE_MASTERY"] },
+  ],
   model_answers: [],
   behavioral_insights: {
     star_adherence_score: 96,
-    confidence_level: "High" as const,
+    confidence_level: "High",
     red_flags: [],
+  },
+  actionable_feedback: {
+    strengths: [
+      "SME-level technical depth — explains trade-offs unprompted, not just what was chosen",
+      "Every story closes with a quantified, action-linked result",
+      "Proactive ownership — caught and fixed their own bug before being asked",
+    ],
+    growth_areas: [
+      "Edge case awareness is strong but not yet fully proactive on every question — still occasionally waits to be asked",
+    ],
+    top_priority_fix:
+      "This session is Staff-ready as-is. The one stretch goal: proactively name a failure mode on every system question, not just most of them — that's the last gap between 'very strong' and 'exceptional' here.",
   },
 };
 
-// ---- No Hire scenario — most signals rated 1-2, to check that many
-// stacked framework + model-answer callouts don't break card spacing.
-const NO_HIRE_DEBRIEF = {
-  ...MOCK_DEBRIEF,
+// ---- No Hire scenario — most signals rated 1-2 with independently written
+// reasoning/evidence matched to that performance level (see note above the
+// Strong Hire scenario on why this isn't derived from MOCK_DEBRIEF).
+// Checks that many stacked framework + model-answer callouts don't break
+// card spacing.
+const NO_HIRE_DEBRIEF: NewDebrief = {
   summary: {
-    recommendation: "No Hire" as const,
+    recommendation: "No Hire",
     hire_probability: 22,
     overall_impression:
       "Struggled to go beyond surface-level answers across almost every question. Technical claims were frequently vague or unverifiable, and several answers had no clear outcome. This session would not clear a technical screen at most companies.",
   },
-  skill_analysis: MOCK_DEBRIEF.skill_analysis.map((s, i) => ({
-    ...s,
-    rating: i % 3 === 0 ? 3 : 1,
-  })),
+  metrics: {
+    talk_to_listen_ratio: "58/42",
+    avg_response_latency_sec: 4.1,
+    signal_to_noise_ratio: 0.04,
+    interruption_count: 0,
+  },
+  skill_analysis: [
+    { parameter_id: "TECHNICAL_DEPTH", rating: 1, reasoning: "Named tools without being able to explain how they worked or why they were chosen over alternatives, even when probed directly.", evidence_quotes: ["We used Kubernetes because it's the industry standard and everyone uses it these days", "I'm not totally sure how the caching worked, I just used what was already set up"] },
+    { parameter_id: "PROBLEM_SOLVING", rating: 1, reasoning: "Jumped straight to a guess when faced with an ambiguous scenario instead of asking a clarifying question, then couldn't recover when the guess was wrong.", evidence_quotes: ["I'd just restart the service, that usually fixes it", "Yeah I'm not sure what else I'd check, maybe just wait and see"] },
+    { parameter_id: "STAR_ALIGNMENT", rating: 3, reasoning: "Stories had a recognizable situation and action but the result step was routinely left as 'it worked out' with no number attached.", evidence_quotes: ["So we shipped that and it went pretty well after that", "The team was happier with the new process, I think"] },
+    { parameter_id: "COMMUNICATION_SNR", rating: 1, reasoning: "Most of the airtime was spent narrating thought process or restating the question rather than delivering content, making it hard to extract an actual answer.", evidence_quotes: ["So basically what happened was, let me think about this for a second, so the way it worked was", "Yeah so I guess the way I'd think about it is, it's kind of like, there's a few ways to approach it"] },
+    { parameter_id: "RESULT_ORIENTATION", rating: 1, reasoning: "No answer in the session closed with a quantified outcome — every story stopped at 'we shipped it' or 'it went fine'.", evidence_quotes: ["we rolled that out and didn't get any complaints after", "it's been running okay since then as far as I know"] },
+    { parameter_id: "OWNERSHIP_ETHICS", rating: 3, reasoning: "Described completing assigned tasks reliably, but every example was reactive — nothing volunteered or taken on beyond what was explicitly asked.", evidence_quotes: ["I did what was in the ticket and closed it out", "if something breaks I usually wait for someone to flag it before I look into it"] },
+    { parameter_id: "ADAPTABILITY_GROWTH", rating: 1, reasoning: "Became visibly defensive when the interviewer pointed out a flaw in the approach, and did not revise the answer even after the hint.", evidence_quotes: ["No I think it would have been fine, we just didn't hit that case", "I mean, it worked for us so I'm not sure what the issue is"] },
+    { parameter_id: "EDGE_CASE_MASTERY", rating: 1, reasoning: "Described only the happy path in every system question and did not raise a single failure mode even when directly asked what could go wrong.", evidence_quotes: ["In the normal case it just processes the queue in order", "Oh yeah I guess if that failed we'd need to handle it somehow"] },
+  ],
+  question_walkthrough: [
+    { question_number: 1, key_takeaway: "Opened with a vague summary of experience with no specific project or outcome named — didn't cost much on its own, but set a low-signal tone for the session.", signal_ids: ["COMMUNICATION_SNR"] },
+    { question_number: 2, key_takeaway: "Named Kubernetes and a caching layer but couldn't explain either beyond 'it's standard' when probed — the moment the interview shifted from cautious optimism to concern.", signal_ids: ["TECHNICAL_DEPTH"] },
+    { question_number: 3, key_takeaway: "Guessed a fix ('just restart it') without diagnosing the actual scenario, and had no fallback when told the guess didn't hold — a real gap for anything beyond the most junior on-call rotation.", signal_ids: ["PROBLEM_SOLVING"] },
+    { question_number: 4, key_takeaway: "Got defensive when the interviewer pointed out an edge case the approach missed, rather than incorporating the feedback — this is the single most damaging moment in the transcript.", signal_ids: ["ADAPTABILITY_GROWTH"] },
+    { question_number: 5, key_takeaway: "Described the queue processor's happy path only, and even when asked directly what could go wrong, gave an uncertain, unprompted-feeling answer.", signal_ids: ["EDGE_CASE_MASTERY"] },
+  ],
   model_answers: [
-    ...MOCK_DEBRIEF.model_answers,
     {
       question_number: 3,
-      parameter_id: "STAR_ALIGNMENT",
-      framework: "STAR",
+      parameter_id: "PROBLEM_SOLVING",
+      framework: "Clarify → Approach → Trade-offs → Validate",
       model_excerpt:
-        "Situation: our checkout error rate spiked to 4% after a deploy. Task: I was on-call and owned triage. Action: I bisected the last three deploys, found the culprit in a payment-retry change, and rolled it back within 12 minutes. Result: error rate returned to baseline (0.2%) and we shipped a fixed version with a regression test the next day.",
+        "Before I restart anything, I'd want to know: is this affecting all requests or a subset? If it's sudden, I'd check what deployed in the last hour first, since that's the highest-probability cause. I'd only restart as a last resort, since that can mask the real issue and I'd want a fix, not just a Band-Aid.",
     },
     {
       question_number: 5,
-      parameter_id: "RESULT_ORIENTATION",
-      framework: "Situation → Complication → Resolution → Impact",
+      parameter_id: "EDGE_CASE_MASTERY",
+      framework: "Happy Path + Two",
       model_excerpt:
-        "The queue was backing up during peak hours. I added backpressure and horizontal scaling triggers on queue depth, which cut peak processing lag from 40 minutes to under 3.",
+        "Normally it processes the queue in order. Two things I'd want to handle: a message that fails repeatedly shouldn't block the whole queue forever, so I'd move it to a dead-letter queue after N retries. And if the consumer crashes mid-processing, I'd want at-least-once delivery with idempotent handlers so we don't silently drop or double-process a message.",
     },
   ],
   behavioral_insights: {
     star_adherence_score: 24,
-    confidence_level: "Low" as const,
+    confidence_level: "Low",
     red_flags: [
       "No quantified outcome in 4 of 5 answers",
       "Could not explain a core technology choice when probed",
       "Never proactively raised a failure mode or edge case",
+      "Became defensive rather than incorporating interviewer feedback",
     ],
+  },
+  actionable_feedback: {
+    strengths: [
+      "Reliable on explicitly assigned work — nothing described here was left unfinished",
+    ],
+    growth_areas: [
+      "Technical claims don't hold up under a second-level probe — comfortable naming tools, not explaining them",
+      "No quantified outcome anywhere in the session — every story stops at 'it worked'",
+      "Responded to interviewer feedback with defensiveness rather than incorporating it — this is the harder gap to close before the depth gap",
+    ],
+    top_priority_fix:
+      "Before anything else: the next time an interviewer points out a flaw, practice pausing and asking 'can you say more about that?' instead of defending the original answer. Everything else here is trainable with practice; that reaction pattern is the one an interviewer will remember most.",
   },
 };
 

@@ -463,11 +463,34 @@ export function DebriefReportView({
         <p className="text-sm text-gray-300 leading-relaxed border-t border-gray-800 pt-4">
           {d.summary.overall_impression}
         </p>
+        {d.actionable_feedback?.top_priority_fix && (
+          <p className="text-sm text-white leading-relaxed border-t border-gray-800 pt-4">
+            <span className="text-[10px] font-semibold tracking-widest text-gray-500 uppercase mr-2">Bottom line —</span>
+            {d.actionable_feedback.top_priority_fix}
+          </p>
+        )}
       </div>
+
+      {/* Above-the-fold quick nav — this report runs long, and a first-time
+          reader shouldn't have to scroll past everything to find the part
+          they care about (flagged directly by persona review: "nothing
+          above the fold beyond the outcome badge"). */}
+      <nav aria-label="Jump to section" className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
+        {[
+          ["what-happened", "What Happened"],
+          ["signal-analysis", "Signal Analysis"],
+          ["metrics", "Conversational Metrics"],
+          ["action-plan", "Action Plan"],
+        ].map(([href, label]) => (
+          <a key={href} href={`#${href}`} className="text-gray-400 hover:text-gray-950 underline underline-offset-4 decoration-gray-200 hover:decoration-gray-400 transition-colors">
+            {label}
+          </a>
+        ))}
+      </nav>
 
       {/* ═══ 01 — What Happened: the question-by-question walkthrough ═══ */}
       {walkthrough.length > 0 && (
-        <div className="space-y-6">
+        <div id="what-happened" className="space-y-6 scroll-mt-20">
           <SectionHeading
             n="01"
             title="What Happened"
@@ -538,7 +561,7 @@ export function DebriefReportView({
       })()}
 
       {/* ═══ 03 — Signal Analysis ═══ */}
-      <div className="space-y-6">
+      <div id="signal-analysis" className="space-y-6 scroll-mt-20">
         <SectionHeading
           n="03"
           title="Signal Analysis"
@@ -621,7 +644,7 @@ export function DebriefReportView({
       </div>
 
       {/* ═══ 04 — Conversational Metrics ═══ */}
-      <div className="space-y-6">
+      <div id="metrics" className="space-y-6 scroll-mt-20">
         <SectionHeading
           n="04"
           title="Conversational Metrics"
@@ -679,7 +702,7 @@ export function DebriefReportView({
       </div>
 
       {/* ═══ 06 — Action Plan ═══ */}
-      <div className="space-y-6">
+      <div id="action-plan" className="space-y-6 scroll-mt-20">
         <SectionHeading n="06" title="Action Plan" sub="What to keep doing, and the one thing to fix before your next round." />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <div className="space-y-3">
