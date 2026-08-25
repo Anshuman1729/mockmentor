@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { assertSessionOwner } from "@/lib/session-auth";
 import { sql } from "@/lib/db";
 
 export async function PATCH(
@@ -7,17 +7,9 @@ export async function PATCH(
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const user = await currentUser();
-    const user_email = user?.emailAddresses[0]?.emailAddress ?? `${userId}@clerk.dev`;
     const { sessionId } = await params;
-    const sessionCheck = await sql`SELECT user_email FROM sessions WHERE id = ${sessionId}`;
-    if (sessionCheck.length === 0 || sessionCheck[0].user_email !== user_email) {
-      return NextResponse.json({ error: "Session not found or access denied" }, { status: 403 });
-    }
+    const authCheck = await assertSessionOwner(sessionId);
+    if (!authCheck.ok) return authCheck.response;
     const body = await req.json();
     const { background, candidate_questions_asked } = body;
 
@@ -51,20 +43,13 @@ export async function GET(
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const user = await currentUser();
-    const user_email = user?.emailAddresses[0]?.emailAddress ?? `${userId}@clerk.dev`;
     const { sessionId } = await params;
+    const authCheck = await assertSessionOwner(sessionId);
+    if (!authCheck.ok) return authCheck.response;
 
     const sessions = await sql`
       SELECT * FROM sessions WHERE id = ${sessionId}
     `;
-    if (sessions.length === 0 || sessions[0].user_email !== user_email) {
-      return NextResponse.json({ error: "Session not found or access denied" }, { status: 403 });
-    }
 
     const qas = await sql`
       SELECT * FROM qa_pairs WHERE session_id = ${sessionId} ORDER BY question_number ASC
@@ -74,7 +59,6 @@ export async function GET(
       SELECT * FROM debriefs WHERE session_id = ${sessionId}
     `;
 
-    // debrief_data is JSONB — parse it out of the row
     const debriefRow = debriefs[0] ?? null;
     const debrief = debriefRow?.debrief_data ?? null;
 

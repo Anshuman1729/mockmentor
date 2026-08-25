@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { assertSessionOwner } from "@/lib/session-auth";
 import { sql } from "@/lib/db";
 import { generateNextQuestion, generateDomainQuestion, SeedQuestion } from "@/lib/groq";
 
@@ -42,11 +42,9 @@ function getTotalQuestions(roundType: string): number {
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
     const { sessionId } = await req.json();
+    const authCheck = await assertSessionOwner(sessionId);
+    if (!authCheck.ok) return authCheck.response;
 
     if (!sessionId) {
       return NextResponse.json({ error: "sessionId is required" }, { status: 400 });

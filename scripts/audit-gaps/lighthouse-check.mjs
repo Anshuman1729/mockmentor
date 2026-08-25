@@ -1,18 +1,22 @@
 #!/usr/bin/env node
-// Minimal Lighthouse CI script for Phase 1 audit gap closure
+// Lighthouse audit — Phase 1 audit gap closure
 // Usage: node scripts/audit-gaps/lighthouse-check.mjs --url=http://localhost:3000
 
-import { execSync } from "child_process";
-import fs from "fs";
+import { execSync } from 'child_process';
+const url = process.argv.find(a => a.startsWith('--url='))?.split('=')[1] ?? 'http://localhost:3000';
 
-const url = process.argv.find((a) => a.startsWith("--url="))?.split("=")[1] ?? "http://localhost:3000";
-console.log(`[Lighthouse Audit] Checking ${url}`);
-console.log(`[Baseline Targets] LCP < 2.5s | TTI < 3.0s | Lighthouse Score > 90`);
-console.log(`[Status] Script scaffold created. Run Lighthouse CLI separately when dev server is running.`);
+console.log(`[Lighthouse] Running audit against ${url}...`);
 
-fs.writeFileSync(".lighthouse-baseline.json", JSON.stringify({
-  url,
-  targets: { lcp: 2.5, tti: 3.0, score: 90 },
-  checked: new Date().toISOString(),
-}, null, 2));
-console.log(`[Done] Baseline saved to .lighthouse-baseline.json`);
+try {
+  // Try npx lighthouse first, fall back to installed module
+  const output = execSync(
+    `npx lighthouse ${url} --output=json --output-path=.lighthouse-report.json --chrome-flags="--headless"` +
+    ` || node -e "const lighthouse = require('lighthouse'); lighthouse('${url}', {output:'json',port:9222}).then(r=>console.log('Lighthouse ran:', r))"`,
+    { encoding: 'utf-8', stdio: 'pipe', timeout: 60000 }
+  );
+  console.log('[Lighthouse] Audit completed. Check .lighthouse-report.json');
+} catch (e) {
+  console.error('[Lighthouse] Audit failed — ensure `lighthouse` package is installed (`npm i lighthouse`) and a server is running at the URL.');
+  console.error(e.message);
+  process.exit(1);
+}

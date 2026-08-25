@@ -12,7 +12,6 @@ interface SkillAnalysis {
 interface Debrief {
   summary: {
     recommendation: string;
-    hire_probability: number;
     overall_impression: string;
   };
   skill_analysis: SkillAnalysis[];
@@ -59,7 +58,6 @@ function ratingDots(rating: number): string {
 function buildEmailHtml(session: Session, debrief: Debrief): string {
   const rec   = debrief.summary?.recommendation ?? "Borderline";
   const color = recommendationColor[rec] ?? "#6b7280";
-  const prob  = debrief.summary?.hire_probability ?? 0;
 
   const strengths    = Array.isArray(debrief.actionable_feedback?.strengths)    ? debrief.actionable_feedback.strengths    : [];
   const growthAreas  = Array.isArray(debrief.actionable_feedback?.growth_areas) ? debrief.actionable_feedback.growth_areas : [];
@@ -113,13 +111,10 @@ function buildEmailHtml(session: Session, debrief: Debrief): string {
         <tr>
           <td style="padding:32px;">
 
-            <!-- Hire Probability -->
+            <!-- Outcome -->
             <div style="margin-bottom:24px;">
-              <p style="margin:0 0 6px;font-size:10px;font-weight:600;letter-spacing:0.1em;color:#9ca3af;text-transform:uppercase;">Hire Probability</p>
-              <div style="display:flex;align-items:baseline;gap:12px;">
-                <span style="font-size:48px;font-weight:700;font-family:monospace;color:#111827;line-height:1;">${prob}%</span>
-                <span style="display:inline-block;padding:4px 12px;border-radius:999px;border:1px solid ${color}33;background:${color}11;font-size:12px;font-weight:600;color:${color};">${rec}</span>
-              </div>
+              <p style="margin:0 0 6px;font-size:10px;font-weight:600;letter-spacing:0.1em;color:#9ca3af;text-transform:uppercase;">Interview Outcome</p>
+              <span style="display:inline-block;padding:4px 12px;border-radius:999px;border:1px solid ${color}33;background:${color}11;font-size:14px;font-weight:600;color:${color};">${rec}</span>
             </div>
 
             <!-- Overall Impression -->
