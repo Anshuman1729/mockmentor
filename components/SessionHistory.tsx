@@ -16,7 +16,6 @@ interface SessionSummary {
   created_at: string;
   status: string;
   hire_recommendation: string | null;
-  hire_probability: number | null;
 }
 
 function RecommendationBadge({ rec }: { rec: string | null }) {
@@ -111,11 +110,6 @@ export default function SessionHistory() {
                   <Clock className="w-3 h-3" />
                   {formatDate(s.created_at)}
                 </span>
-                {s.hire_probability !== null && (
-                  <span className="font-medium">
-                    {s.hire_probability}% hire probability
-                  </span>
-                )}
               </div>
             </div>
             <Button asChild variant="ghost" size="sm" className="shrink-0 gap-1">
