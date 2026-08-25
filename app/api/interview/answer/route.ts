@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { assertSessionOwner } from "@/lib/session-auth";
 import { sql } from "@/lib/db";
 
 const MIN_ANSWER_LENGTH = 50;
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
     const { questionId, answer, answer_duration_sec } = await req.json();
+    const sessionRow = await sql`SELECT session_id FROM qa_pairs WHERE id = ${questionId}`;
+    if (sessionRow.length === 0) {
+      return NextResponse.json({ error: "Question not found" }, { status: 404 });
+    }
+    const authCheck = await assertSessionOwner(sessionRow[0].session_id);
+    if (!authCheck.ok) return authCheck.response;
 
     if (!questionId || answer === undefined || answer === null) {
       return NextResponse.json(
