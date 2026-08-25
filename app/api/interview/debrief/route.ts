@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
 import { generateDebrief } from "@/lib/groq";
 import { sendDebriefEmail } from "@/lib/email";
@@ -7,6 +8,10 @@ import { checkFatalFlag } from "@/lib/fatal-flag";
 
 export async function POST(req: NextRequest) {
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const { sessionId } = await req.json();
 
     if (!sessionId) {
