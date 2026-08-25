@@ -25,6 +25,8 @@ const MOCK_DEBRIEF = {
     avg_response_latency_sec: 2.6,
     signal_to_noise_ratio: 0.11,
     interruption_count: 1,
+    longest_monologue_sec: 143,
+    candidate_questions_asked: 1,
   },
   skill_analysis: [
     {
@@ -198,6 +200,8 @@ const STRONG_HIRE_DEBRIEF: NewDebrief = {
     avg_response_latency_sec: 1.7,
     signal_to_noise_ratio: 0.24,
     interruption_count: 0,
+    longest_monologue_sec: 98,
+    candidate_questions_asked: 3,
   },
   skill_analysis: [
     { parameter_id: "TECHNICAL_DEPTH", rating: 5, reasoning: "Explained partition assignment, cache eviction trade-offs, and a specific incident's root cause without being prompted — SME-level depth an interviewer doesn't have to extract.", evidence_quotes: ["We used a sticky partition assignor because round-robin was causing multi-second rebalance gaps during deploys", "I chose an LRU eviction policy over TTL because our access pattern was heavily skewed toward recently-viewed items"] },
@@ -253,6 +257,8 @@ const NO_HIRE_DEBRIEF: NewDebrief = {
     avg_response_latency_sec: 4.1,
     signal_to_noise_ratio: 0.04,
     interruption_count: 0,
+    longest_monologue_sec: 187,
+    candidate_questions_asked: 0,
   },
   skill_analysis: [
     { parameter_id: "TECHNICAL_DEPTH", rating: 1, reasoning: "Named tools without being able to explain how they worked or why they were chosen over alternatives, even when probed directly.", evidence_quotes: ["We used Kubernetes because it's the industry standard and everyone uses it these days", "I'm not totally sure how the caching worked, I just used what was already set up"] },

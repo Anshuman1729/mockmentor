@@ -150,6 +150,18 @@ export async function POST(req: NextRequest) {
     debrief.summary.hire_probability = hireProbability;
     debrief.summary.recommendation = debrief.summary.recommendation as typeof debrief.summary.recommendation;
 
+    // Backlog #10/#11: both already collected via real instrumentation
+    // (answer_duration_sec per answer, candidate_questions_asked per
+    // session) but never surfaced in the debrief — inject them here rather
+    // than asking the LLM to estimate what we've already measured.
+    const durations = qas
+      .map((qa) => qa.answer_duration_sec)
+      .filter((d): d is number => typeof d === "number");
+    if (durations.length > 0) {
+      debrief.metrics.longest_monologue_sec = Math.max(...durations);
+    }
+    debrief.metrics.candidate_questions_asked = session.candidate_questions_asked ?? 0;
+
     // Extract reasoning for shadow scoring (stored separately, not in user-facing debrief_data)
     const reasoning = debrief.skill_analysis.map((s) => ({
       parameter_id: s.parameter_id,

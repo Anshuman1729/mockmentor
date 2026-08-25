@@ -38,6 +38,8 @@ interface NewDebrief {
     avg_response_latency_sec: number;
     signal_to_noise_ratio: number;
     interruption_count: number;
+    longest_monologue_sec?: number;
+    candidate_questions_asked?: number;
   };
   skill_analysis: SkillAnalysis[];
   question_walkthrough?: QuestionWalkthroughEntry[];
@@ -262,6 +264,21 @@ function MetricCard({ m }: { m: MetricConfig }) {
         <p className="text-xs text-gray-500 leading-relaxed"><span className="font-semibold text-gray-700">Benchmark — </span>{m.bench}</p>
         <p className="text-xs text-gray-800 leading-relaxed font-medium pt-1">{m.yours}</p>
       </div>
+    </div>
+  );
+}
+
+// For stats with no research-backed benchmark yet (Backlog #10/#11: real
+// instrumentation data that's genuinely useful but doesn't have an
+// ideal/watch/flag threshold behind it) — shown plainly rather than
+// inventing a graded band the way MetricCard does for the four
+// research-backed metrics.
+function PlainStat({ label, value, blurb }: { label: string; value: string; blurb: string }) {
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white p-5 space-y-2">
+      <p className="text-[10px] font-semibold tracking-wider text-gray-500 uppercase">{label}</p>
+      <p className="font-mono text-3xl font-semibold text-gray-950 tabular-nums">{value}</p>
+      <p className="text-xs text-gray-500 leading-relaxed border-t border-gray-200/70 pt-3">{blurb}</p>
     </div>
   );
 }
@@ -655,6 +672,24 @@ export function DebriefReportView({
             <MetricCard key={m.label} m={m} />
           ))}
         </div>
+        {(d.metrics.longest_monologue_sec !== undefined || d.metrics.candidate_questions_asked !== undefined) && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {d.metrics.longest_monologue_sec !== undefined && (
+              <PlainStat
+                label="Longest Monologue"
+                value={`${d.metrics.longest_monologue_sec}s`}
+                blurb="Your single longest answer, start to finish. No universal benchmark yet — worth tracking against your own past sessions rather than a fixed target."
+              />
+            )}
+            {d.metrics.candidate_questions_asked !== undefined && (
+              <PlainStat
+                label="Questions You Asked"
+                value={String(d.metrics.candidate_questions_asked)}
+                blurb="How many clarifying or exploratory questions you asked the interviewer. Interviewers read genuine curiosity as engagement — asking zero across a whole session can read as passive."
+              />
+            )}
+          </div>
+        )}
       </div>
 
       {/* ═══ 05 — Behavioral Insights ═══ */}

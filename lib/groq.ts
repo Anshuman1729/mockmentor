@@ -309,6 +309,14 @@ export interface DebriefReport {
     avg_response_latency_sec: number;
     signal_to_noise_ratio: number;  // 0.0-1.0
     interruption_count: number;
+    // Both injected by TS from real instrumentation, not LLM-estimated —
+    // unlike the four fields above, these come straight from
+    // qa_pairs.answer_duration_sec and sessions.candidate_questions_asked
+    // (Backlog #10/#11: data was already collected but never surfaced).
+    // No research-backed benchmark exists for either yet, so the UI shows
+    // them as plain stats rather than inventing ideal/watch/flag bands.
+    longest_monologue_sec?: number;
+    candidate_questions_asked?: number;
   };
   skill_analysis: SkillAnalysis[]; // exactly 8 items
   question_walkthrough: QuestionWalkthroughEntry[]; // one entry per answered question, in order
