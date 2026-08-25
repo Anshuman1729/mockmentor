@@ -136,6 +136,62 @@ export const INTERVIEW_RUBRIC: Record<string, SignalParameter> = {
 };
 
 /**
+ * SIGNAL → FRAMEWORK LOOKUP (Finding #4)
+ * Deterministic, not LLM-generated — same philosophy as hire_probability.
+ * Surfaced in the UI for any signal rated <=3, so every "you're weak here"
+ * comes with a concrete "here's the structure to fix it" rather than just
+ * an observation with no path forward.
+ */
+export interface SignalFramework {
+  name: string;        // short, memorable name for the framework
+  steps: string[];     // the structure, in order
+  howToApply: string;  // one line connecting the framework to this specific signal
+}
+
+export const SIGNAL_FRAMEWORKS: Record<string, SignalFramework> = {
+  TECHNICAL_DEPTH: {
+    name: "What → How → Why → Trade-off",
+    steps: ["State what you built or used", "Explain how it works, briefly", "Explain why you chose it over the obvious alternative", "Name the trade-off you accepted"],
+    howToApply: "Most answers stop at 'what' and 'how'. The 'why' and the trade-off are what separate a proficient answer from an exceptional one — they're what an interviewer can't get from a resume.",
+  },
+  PROBLEM_SOLVING: {
+    name: "Clarify → Approach → Trade-offs → Validate",
+    steps: ["Clarify the ambiguity or constraint before diving in", "State your approach in one sentence", "Weigh at least one trade-off out loud", "Say how you'd validate the solution worked"],
+    howToApply: "Jumping straight to a solution reads as rigid. Naming the ambiguity first — even briefly — is what signals strategic thinking under uncertainty.",
+  },
+  STAR_ALIGNMENT: {
+    name: "STAR",
+    steps: ["Situation — the context in one or two sentences", "Task — what you specifically were responsible for", "Action — what you actually did, in first person", "Result — a quantified outcome"],
+    howToApply: "The Result step is almost always the weakest part of a STAR answer. If you can't attach a number, attach a comparison ('faster than before', 'fewer than the prior approach') instead of leaving it open-ended.",
+  },
+  COMMUNICATION_SNR: {
+    name: "Answer-first (BLUF)",
+    steps: ["Lead with the one-sentence answer", "Back it with 2-3 supporting details", "Stop — resist the urge to restate what you already said"],
+    howToApply: "Burying the answer inside a longer story forces the interviewer to extract it themselves. Say the conclusion first, then justify it.",
+  },
+  RESULT_ORIENTATION: {
+    name: "Situation → Complication → Resolution → Impact",
+    steps: ["Situation — what was happening", "Complication — what was actually broken or at risk", "Resolution — what you changed", "Impact — a specific number: %, $, time, or count"],
+    howToApply: "Describing the resolution without the impact number is the single most common gap. Even a rough estimate ('roughly halved') is stronger than no number at all.",
+  },
+  OWNERSHIP_ETHICS: {
+    name: "Own It",
+    steps: ["Name the problem, including your role in it if relevant", "State the decision you made without waiting to be told", "Describe action taken beyond your explicit scope", "Own the outcome — credit or blame — without deflecting"],
+    howToApply: "Ownership reads clearest when you describe acting before being asked, and when you own a mistake in first person instead of describing it passively.",
+  },
+  ADAPTABILITY_GROWTH: {
+    name: "Feedback Loop",
+    steps: ["What changed or what feedback you received", "How you adjusted your approach", "What you'd do differently next time"],
+    howToApply: "Interviewers are listening for a specific adjustment, not just 'I learned a lot'. Name the one thing you changed and why it was the right change.",
+  },
+  EDGE_CASE_MASTERY: {
+    name: "Happy Path + Two",
+    steps: ["Describe the happy path solution", "Proactively name one failure mode or edge case", "Name a second, less obvious one", "Say how you'd catch or handle each"],
+    howToApply: "Waiting for the interviewer to ask 'what if X fails' reads as reactive. Naming a failure mode before they ask is what reads as senior.",
+  },
+};
+
+/**
  * CALCULATOR LOGIC (Vibe-Proofing)
  * Normalizes scores by Weight and applies Seniority Modifiers.
  */

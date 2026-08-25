@@ -131,6 +131,31 @@ const MOCK_DEBRIEF = {
       evidence_quotes:  ["31% said yes. That was enough signal", "I try to understand their concern first"],
     },
   ],
+  question_walkthrough: [
+    {
+      question_number: 1,
+      key_takeaway: "Opened with a quantified win (23% retention lift) instead of a generic self-intro — signaled data-driven ownership immediately.",
+      signal_ids: ["RESULT_ORIENTATION", "TECHNICAL_DEPTH"],
+    },
+    {
+      question_number: 3,
+      key_takeaway: "Ran a real experiment to resolve ambiguity on the mobile-vs-web decision rather than guessing — this is the strongest problem-solving moment in the session.",
+      signal_ids: ["PROBLEM_SOLVING", "STAR_ALIGNMENT"],
+    },
+    {
+      question_number: 5,
+      key_takeaway: "Owned a feature failure without deflecting, quantified the outcome (under 4% usage), and reallocated the team's time — textbook ownership that a reviewer would flag as a hire signal on its own.",
+      signal_ids: ["OWNERSHIP_ETHICS", "ADAPTABILITY_GROWTH"],
+    },
+  ],
+  model_answers: [
+    {
+      question_number: 4,
+      parameter_id: "EDGE_CASE_MASTERY",
+      framework: "Happy Path + Two",
+      model_excerpt: "Most of the pushback is technical debt or unclear scope, which I address directly — but the case I watch for is when an engineer is right and I'm wrong about feasibility. In that case I'd want us to timebox a quick spike before committing either way, rather than my roadmap opinion overriding their technical read.",
+    },
+  ],
   behavioral_insights: {
     star_adherence_score: 78,
     confidence_level:     "Medium",

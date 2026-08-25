@@ -285,6 +285,19 @@ export interface SkillAnalysis {
   evidence_quotes: string[];
 }
 
+export interface QuestionWalkthroughEntry {
+  question_number: number;
+  key_takeaway: string; // what happened in this answer AND what it signals for the hire decision
+  signal_ids: string[]; // 1-3 of the 8 parameter_ids this question mainly produced evidence for
+}
+
+export interface ModelAnswer {
+  question_number: number;  // the actual question this illustrates a stronger answer to
+  parameter_id: string;     // the weak signal this addresses (should be a low-rated one)
+  framework: string;        // short framework name, e.g. "STAR" or "Situation → Complication → Resolution → Impact"
+  model_excerpt: string;    // 2-4 sentences: a concrete, plausible stronger answer to that specific question
+}
+
 export interface DebriefReport {
   summary: {
     recommendation: "Strong Hire" | "Hire" | "Borderline" | "No Hire";
@@ -298,6 +311,8 @@ export interface DebriefReport {
     interruption_count: number;
   };
   skill_analysis: SkillAnalysis[]; // exactly 8 items
+  question_walkthrough: QuestionWalkthroughEntry[]; // one entry per answered question, in order
+  model_answers: ModelAnswer[]; // 1-2 entries, for the weakest signal(s) only
   behavioral_insights: {
     star_adherence_score: number;   // 0-100
     confidence_level: "High" | "Medium" | "Low";
@@ -357,6 +372,24 @@ const FEW_SHOT_EXAMPLES = `
       ]
     }
   ],
+  "question_walkthrough": [
+    {
+      "question_number": 1,
+      "key_takeaway": "Opened with a specific rebalancing latency fix (8s to 400ms) instead of a generic self-intro — immediately signaled hands-on ownership of production systems, the kind of concrete detail that earns trust in the first 60 seconds of a screen.",
+      "signal_ids": ["TECHNICAL_DEPTH", "RESULT_ORIENTATION"]
+    },
+    {
+      "question_number": 2,
+      "key_takeaway": "Named the exactly-once vs at-least-once trade-off unprompted, which is the difference an interviewer uses to separate 'has used Kafka' from 'understands Kafka' — this is the single strongest technical moment in the transcript.",
+      "signal_ids": ["TECHNICAL_DEPTH", "PROBLEM_SOLVING"]
+    },
+    {
+      "question_number": 3,
+      "key_takeaway": "Closed the migration story with a paired metric (p99 340ms→90ms, cost -23%) rather than stopping at 'it went well' — this is exactly the Impact step most candidates skip, and its presence here is why Result Orientation scored a 5.",
+      "signal_ids": ["RESULT_ORIENTATION", "STAR_ALIGNMENT"]
+    }
+  ],
+  "model_answers": [],
   "behavioral_insights": {
     "star_adherence_score": 92,
     "confidence_level": "High",
@@ -402,6 +435,32 @@ const FEW_SHOT_EXAMPLES = `
       ]
     }
   ],
+  "question_walkthrough": [
+    {
+      "question_number": 1,
+      "key_takeaway": "Named Kubernetes and microservices but justified the choice with 'industry standard' rather than a reason tied to the system's actual constraints — an interviewer hears this as pattern-matching on buzzwords, not engineering judgment, which is why this sets a low ceiling before the interview has really started.",
+      "signal_ids": ["TECHNICAL_DEPTH"]
+    },
+    {
+      "question_number": 2,
+      "key_takeaway": "The explanation looped back on itself twice before reaching a conclusion — a real interviewer would have to work to extract the actual point, which reads as unprepared even if the underlying work was fine.",
+      "signal_ids": ["COMMUNICATION_SNR"]
+    }
+  ],
+  "model_answers": [
+    {
+      "question_number": 1,
+      "parameter_id": "TECHNICAL_DEPTH",
+      "framework": "What → How → Why → Trade-off",
+      "model_excerpt": "We moved to Kubernetes specifically because our deploy cadence was blocked on manual VM provisioning — it was taking us 40 minutes per release. K8s let us define declarative deployments and roll back in under a minute. The trade-off was operational complexity: we had to invest two weeks in on-call runbooks before it paid off."
+    },
+    {
+      "question_number": 2,
+      "parameter_id": "COMMUNICATION_SNR",
+      "framework": "Answer-first (BLUF)",
+      "model_excerpt": "Short answer: a bad cache invalidation was serving stale prices for up to 10 minutes. We fixed it by moving from TTL-based expiry to event-driven invalidation tied to the price-update queue, which cut staleness to under 5 seconds."
+    }
+  ],
   "behavioral_insights": {
     "star_adherence_score": 28,
     "confidence_level": "Low",
@@ -445,6 +504,26 @@ const FEW_SHOT_EXAMPLES = `
         "I just added an index on the column and it got faster — I didn't look too deeply into why",
         "I've heard of B-tree indexes but I'm not sure exactly how they work under the hood"
       ]
+    }
+  ],
+  "question_walkthrough": [
+    {
+      "question_number": 4,
+      "key_takeaway": "Gave a clean answer-first justification for Postgres over DynamoDB with the actual access-pattern reasoning — this is the strongest moment in the transcript and shows the communication skill is real, not just polish.",
+      "signal_ids": ["COMMUNICATION_SNR", "PROBLEM_SOLVING"]
+    },
+    {
+      "question_number": 6,
+      "key_takeaway": "Admitted not knowing how B-tree indexes work under the hood when probed — the honesty is a plus for trust, but for a senior-level bar this is exactly the depth gap that would surface again in a real system design round.",
+      "signal_ids": ["TECHNICAL_DEPTH"]
+    }
+  ],
+  "model_answers": [
+    {
+      "question_number": 6,
+      "parameter_id": "TECHNICAL_DEPTH",
+      "framework": "What → How → Why → Trade-off",
+      "model_excerpt": "I added a B-tree index on the lookup column — it works by keeping sorted keys in a balanced tree so the query planner can do O(log n) lookups instead of a full scan. I chose it over a hash index because we also needed range queries, which hash indexes can't serve. The trade-off is slightly slower writes since every insert has to maintain the tree balance."
     }
   ],
   "behavioral_insights": {
@@ -510,7 +589,10 @@ ${SIGNAL_ANCHORS}
 1. For EVERY signal in skill_analysis, provide at least 2 verbatim quotes from the candidate's answers as evidence_quotes. Copy word-for-word from the transcript above — do not paraphrase.
 2. Set hire_probability to 0 (this will be computed deterministically by the system).
 3. For metrics, estimate talk_to_listen_ratio based on relative answer lengths, signal_to_noise_ratio based on how much actionable content vs. filler was present, and set avg_response_latency_sec to 2.0 and interruption_count to 0 (defaults — not measurable from text).
-4. Return raw JSON only — no markdown, no code blocks.
+4. Every skill_analysis[].reasoning must do two things, not one: describe what the candidate actually did (the behavior), AND state what that signals to a real interviewer and how it would affect the hire decision. "Explained the caching layer clearly" is not enough — say what that clarity implies (e.g. "which is the kind of clarity that shortens a technical debrief and builds confidence fast"). A reasoning string that only describes behavior without stating its interview consequence is incomplete.
+5. Populate question_walkthrough with one entry per answered question, in question_number order. Each key_takeaway must name what happened in that specific answer AND its hire-decision implication (same two-part requirement as #4) in 1-2 sentences — this is a walkthrough of the interview, not a restatement of skill_analysis. Reference 1-3 signal_ids per entry (from the 8 parameter_ids) that this question's answer produced the clearest evidence for.
+6. Populate model_answers with exactly 1-2 entries, only for the lowest-rated signal(s) (rating <=3). Each entry must reference a real question_number from the transcript where that signal showed weakest, name a short framework (e.g. "STAR", "Answer-first (BLUF)", "What → How → Why → Trade-off"), and write a model_excerpt: a concrete, plausible 2-4 sentence answer to THAT SPECIFIC question, grounded in the candidate's own domain/role, not a generic template. If every signal rated 4+, return an empty array — do not invent a weakness.
+7. Return raw JSON only — no markdown, no code blocks.
 
 Return this exact structure:
 {
@@ -529,8 +611,23 @@ Return this exact structure:
     {
       "parameter_id": "TECHNICAL_DEPTH",
       "rating": 1-5,
-      "reasoning": "Why you gave this score.",
+      "reasoning": "What they did, and what it signals for the hire decision.",
       "evidence_quotes": ["verbatim quote 1", "verbatim quote 2"]
+    }
+  ],
+  "question_walkthrough": [
+    {
+      "question_number": 1,
+      "key_takeaway": "What happened in this answer and its hire-decision implication, 1-2 sentences.",
+      "signal_ids": ["TECHNICAL_DEPTH"]
+    }
+  ],
+  "model_answers": [
+    {
+      "question_number": 1,
+      "parameter_id": "TECHNICAL_DEPTH",
+      "framework": "Short framework name",
+      "model_excerpt": "A concrete stronger answer to that exact question, 2-4 sentences."
     }
   ],
   "behavioral_insights": {
@@ -549,7 +646,12 @@ Include all 8 signals in skill_analysis in this order: TECHNICAL_DEPTH, PROBLEM_
 
   const completion = await getClient().chat.completions.create({
     model: MODEL,
-    max_tokens: 3000,
+    max_tokens: 4500,
+    // See generateNextQuestion — gpt-oss-120b's default 'medium' reasoning
+    // effort burns hidden reasoning tokens out of the same max_tokens budget.
+    // The debrief output is long and structured; keep the budget for visible
+    // JSON, not hidden reasoning.
+    reasoning_effort: "low",
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: "Generate the structured debrief report." },
@@ -560,6 +662,10 @@ Include all 8 signals in skill_analysis in this order: TECHNICAL_DEPTH, PROBLEM_
   // Strip markdown code block if present
   const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
   const report = JSON.parse(jsonStr) as DebriefReport;
+  // Defensive defaults — the LLM occasionally omits a field despite instructions;
+  // downstream rendering should degrade gracefully, not crash.
+  report.question_walkthrough = report.question_walkthrough ?? [];
+  report.model_answers = report.model_answers ?? [];
 
   const usage = {
     input_tokens: completion.usage?.prompt_tokens ?? 0,

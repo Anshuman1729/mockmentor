@@ -12,8 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ShieldCheck, Sparkles, ArrowRight } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import JDFallback from "./JDFallback";
 
 const COMPANY_STAGES = ["Seed", "Series A", "Series B", "Public"];
@@ -149,19 +148,7 @@ export default function SetupForm() {
   }
 
   return (
-    <Card className="w-full max-w-xl shadow-lg">
-      <CardHeader className="pb-4">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold uppercase tracking-wide">
-            <Sparkles className="w-3 h-3" /> AI Setup
-          </span>
-        </div>
-        <CardTitle className="text-2xl">Start Your Mock Interview</CardTitle>
-        <CardDescription>
-          Fill in your details and we&apos;ll run a personalized mock
-          interview tailored to the job description.
-        </CardDescription>
-      </CardHeader>
+    <Card className="w-full max-w-xl rounded-3xl border-gray-100 shadow-2xl shadow-gray-200/50 py-8">
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

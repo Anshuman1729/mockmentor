@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
-import { Button } from "@/components/ui/button";
 import { ChevronRight, ArrowUpRight, Shield, Award, Clock } from "lucide-react";
 
 export default async function LandingPage() {
@@ -36,7 +35,7 @@ export default async function LandingPage() {
                 <span className="text-gray-400">We show you where.</span>
               </h1>
               <p className="text-lg leading-relaxed text-gray-500 md:text-xl">
-                Practice with role-specific questions from your actual job description. Get an evidence-backed signal report — not a vague "good job" — so you fix the gap before the real interview.
+                Practice with role-specific questions from your actual job description. Get an evidence-backed signal report — not a vague &ldquo;good job&rdquo; — so you fix the gap before the real interview.
               </p>
               <div className="flex flex-wrap gap-3">
                 {!isSignedIn ? (
@@ -87,7 +86,7 @@ export default async function LandingPage() {
                 </div>
                 <div className="mt-6 rounded-xl border border-gray-100 bg-gray-50 p-4">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Evidence Quote · Technical Depth</p>
-                  <blockquote className="text-sm font-medium text-gray-800 leading-snug">"We used event-driven architecture with Kafka to decouple the inventory service — latency dropped from 400ms to under 80ms."</blockquote>
+                  <blockquote className="text-sm font-medium text-gray-800 leading-snug">&ldquo;We used event-driven architecture with Kafka to decouple the inventory service — latency dropped from 400ms to under 80ms.&rdquo;</blockquote>
                 </div>
                 <div className="mt-4 flex items-center justify-between text-xs text-gray-400">
                   <span>Talk-to-listen ratio</span>
@@ -150,7 +149,7 @@ export default async function LandingPage() {
                 { quote: "The key moments section is what got me. It pointed out my STAR alignment gap with a real quote. I fixed it before my final round.", name: "Priya M.", role: "Product Manager" },
               ].map((t) => (
                 <blockquote key={t.name} className="rounded-3xl border border-gray-100 bg-gray-50 p-8 shadow-sm shadow-gray-100/40 md:p-10">
-                  <p className="text-lg font-medium leading-relaxed text-gray-950 md:text-xl">"{t.quote}"</p>
+                  <p className="text-lg font-medium leading-relaxed text-gray-950 md:text-xl">&ldquo;{t.quote}&rdquo;</p>
                   <footer className="mt-6 flex items-center gap-3">
                     <div className="h-8 w-8 rounded-full bg-gray-950 flex items-center justify-center text-xs font-extrabold text-white">{t.name[0]}</div>
                     <div>

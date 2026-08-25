@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { clsx, type ClassValue } from "clsx";
+import Link from "next/link";
+import { clsx } from "clsx";
+import { SIGNAL_FRAMEWORKS } from "@/lib/rubric-researched";
 
 // ---- Types ----
 
@@ -10,6 +12,19 @@ interface SkillAnalysis {
   rating: number;
   reasoning: string;
   evidence_quotes: string[];
+}
+
+interface QuestionWalkthroughEntry {
+  question_number: number;
+  key_takeaway: string;
+  signal_ids: string[];
+}
+
+interface ModelAnswer {
+  question_number: number;
+  parameter_id: string;
+  framework: string;
+  model_excerpt: string;
 }
 
 interface NewDebrief {
@@ -25,6 +40,8 @@ interface NewDebrief {
     interruption_count: number;
   };
   skill_analysis: SkillAnalysis[];
+  question_walkthrough?: QuestionWalkthroughEntry[];
+  model_answers?: ModelAnswer[];
   behavioral_insights: {
     star_adherence_score: number;
     confidence_level: "High" | "Medium" | "Low";
@@ -132,7 +149,6 @@ function buildMetrics(m: NewDebrief["metrics"]): MetricConfig[] {
   const latency = m?.avg_response_latency_sec ?? 2;
   const interr  = m?.interruption_count ?? 0;
 
-  // Talk ratio risk labels
   const talkStatusLabel =
     talkPct >= 60 && talkPct <= 75 ? "Ideal range" :
     talkPct > 75 && talkPct <= 78  ? "Slightly high" :
@@ -214,28 +230,31 @@ function buildMetrics(m: NewDebrief["metrics"]): MetricConfig[] {
   ];
 }
 
-const metricStatusStyle: Record<MetricStatus, { card: string; badge: string }> = {
-  ideal: { card: "border-emerald-100 bg-emerald-50/40", badge: "bg-emerald-100 text-emerald-700" },
-  good:  { card: "border-blue-100 bg-blue-50/30",       badge: "bg-blue-100 text-blue-700"       },
-  watch: { card: "border-amber-100 bg-amber-50/30",     badge: "bg-amber-100 text-amber-700"     },
-  flag:  { card: "border-red-100 bg-red-50/30",         badge: "bg-red-100 text-red-700"         },
+// Restrained, three-color semantic palette (emerald/amber/red) plus a neutral
+// gray tier — no blue. Blue-badge-everywhere is exactly the generic-SaaS-AI
+// look this redesign is moving away from.
+const metricStatusStyle: Record<MetricStatus, { card: string; badge: string; bar: string }> = {
+  ideal: { card: "border-emerald-200/70 bg-emerald-50/40", badge: "bg-emerald-100 text-emerald-700", bar: "bg-emerald-500" },
+  good:  { card: "border-gray-200 bg-white",                badge: "bg-gray-100 text-gray-600",       bar: "bg-gray-400"    },
+  watch: { card: "border-amber-200/70 bg-amber-50/40",      badge: "bg-amber-100 text-amber-700",     bar: "bg-amber-500"   },
+  flag:  { card: "border-red-200/70 bg-red-50/40",          badge: "bg-red-100 text-red-700",         bar: "bg-red-500"     },
 };
 
 function MetricCard({ m }: { m: MetricConfig }) {
   const style = metricStatusStyle[m.status];
   return (
-    <div className={`rounded-lg border p-4 space-y-2 ${style.card}`}>
+    <div className={`rounded-xl border p-5 space-y-3 ${style.card}`}>
       <div className="flex items-center justify-between gap-2">
         <p className="text-[10px] font-semibold tracking-wider text-gray-500 uppercase">{m.label}</p>
         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${style.badge}`}>
           {m.statusLabel}
         </span>
       </div>
-      <p className="font-mono text-2xl font-semibold text-gray-900 tabular-nums">{m.value}</p>
-      <div className="space-y-1.5 border-t border-gray-200/60 pt-2">
-        <p className="text-xs text-gray-500 leading-relaxed"><span className="font-medium text-gray-700">What: </span>{m.what}</p>
-        <p className="text-xs text-gray-500 leading-relaxed"><span className="font-medium text-gray-700">Benchmark: </span>{m.bench}</p>
-        <p className="text-xs text-gray-700 leading-relaxed font-medium">{m.yours}</p>
+      <p className="font-mono text-3xl font-semibold text-gray-950 tabular-nums">{m.value}</p>
+      <div className="space-y-2 border-t border-gray-200/70 pt-3">
+        <p className="text-xs text-gray-500 leading-relaxed"><span className="font-semibold text-gray-700">What it measures — </span>{m.what}</p>
+        <p className="text-xs text-gray-500 leading-relaxed"><span className="font-semibold text-gray-700">Benchmark — </span>{m.bench}</p>
+        <p className="text-xs text-gray-800 leading-relaxed font-medium pt-1">{m.yours}</p>
       </div>
     </div>
   );
@@ -258,7 +277,7 @@ function RatingDots({ rating }: { rating: number }) {
           <span
             key={i}
             className={`w-2.5 h-2.5 rounded-full transition-colors ${
-              i <= filled ? "bg-gray-900" : "bg-gray-200"
+              i <= filled ? "bg-gray-950" : "bg-gray-200"
             }`}
           />
         ))}
@@ -270,7 +289,7 @@ function RatingDots({ rating }: { rating: number }) {
 
 const recommendationStyle: Record<string, { bg: string; text: string; border: string }> = {
   "Strong Hire": { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
-  "Hire":        { bg: "bg-blue-50",    text: "text-blue-700",    border: "border-blue-200"    },
+  "Hire":        { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
   "Borderline":  { bg: "bg-amber-50",   text: "text-amber-700",   border: "border-amber-200"   },
   "No Hire":     { bg: "bg-red-50",     text: "text-red-700",     border: "border-red-200"     },
   "On the Fence":{ bg: "bg-amber-50",   text: "text-amber-700",   border: "border-amber-200"   },
@@ -281,6 +300,20 @@ const confidenceStyle: Record<string, string> = {
   Medium: "bg-amber-100 text-amber-700",
   Low:    "bg-red-100 text-red-700",
 };
+
+// Section eyebrow — numbered, editorial. Gives the report a sense of
+// authored structure rather than a dumped grid of cards.
+function SectionHeading({ n, title, sub }: { n: string; title: string; sub?: string }) {
+  return (
+    <div className="flex items-start gap-4">
+      <span className="font-mono text-xs text-gray-300 pt-1 shrink-0" aria-hidden="true">{n}</span>
+      <div className="space-y-1">
+        <h2 className="text-lg font-bold text-gray-950 tracking-tight">{title}</h2>
+        {sub && <p className="text-sm text-gray-500 leading-relaxed max-w-xl">{sub}</p>}
+      </div>
+    </div>
+  );
+}
 
 // ---- Main Component ----
 
@@ -322,8 +355,18 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
     return <p className="text-gray-500 text-center">Debrief not available yet.</p>;
   }
 
-  const { session, debrief } = data;
+  return <DebriefReportView session={data.session} debrief={data.debrief} />;
+}
 
+// Presentational body, split out from the data-fetching wrapper above so it
+// can also be rendered from a mock-data dev preview route without a DB.
+export function DebriefReportView({
+  session,
+  debrief,
+}: {
+  session: SessionData["session"];
+  debrief: Debrief;
+}) {
   // ---- Legacy fallback ----
   if (!isNewDebrief(debrief)) {
     const legacy = debrief as LegacyDebrief;
@@ -366,9 +409,9 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
           </div>
         </div>
         {legacy.closing && (
-          <p className="text-gray-600 italic text-sm leading-relaxed">"{legacy.closing}"</p>
+          <p className="text-gray-600 italic text-sm leading-relaxed">&ldquo;{legacy.closing}&rdquo;</p>
         )}
-        <a href="/" className="text-sm text-gray-400 hover:text-gray-700 transition-colors">← Start another interview</a>
+        <Link href="/" className="text-sm text-gray-400 hover:text-gray-700 transition-colors">← Start another interview</Link>
       </div>
     );
   }
@@ -376,9 +419,12 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
   // ---- New schema ----
   const d = debrief as NewDebrief;
   const rStyle = recommendationStyle[d.summary.recommendation] ?? recommendationStyle["Borderline"];
+  const walkthrough = d.question_walkthrough ?? [];
+  const modelAnswers = d.model_answers ?? [];
+  const modelAnswersByParam = new Map(modelAnswers.map((ma) => [ma.parameter_id, ma]));
 
   return (
-    <div className="max-w-2xl mx-auto pb-16 space-y-10">
+    <div className="max-w-2xl mx-auto pb-16 space-y-12">
 
       {/* Header */}
       <div className="space-y-3 pt-2">
@@ -409,73 +455,46 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
         </p>
       </div>
 
-      {/* Metrics cards — responsive 2-col grid with visible status */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {buildMetrics(d.metrics).map((m) => (
-          <div key={m.label} className="rounded-xl bg-white border border-gray-100 p-4 shadow-sm hover:shadow transition-shadow">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{m.label}</h3>
-              <span className={clsx("text-xs font-bold px-2 py-0.5 rounded-full", m.status === "ideal" && "bg-emerald-50 text-emerald-700", m.status === "good" && "bg-blue-50 text-blue-700", m.status === "watch" && "bg-amber-50 text-amber-700", m.status === "flag" && "bg-rose-50 text-rose-700")}>
-                {m.statusLabel}
-              </span>
-            </div>
-            <p className="text-2xl font-extrabold text-gray-900">{m.value}</p>
-            <p className="text-xs text-gray-500 mt-1 leading-relaxed">{m.what}</p>
-          </div>
-        ))}
-      </div>
-
-      <hr className="border-gray-100" />
-
-      {/* 8-Signal Grid */}
-      <div className="space-y-4">
-        <h2 className="text-xs font-semibold tracking-widest text-gray-400 uppercase">Signal Analysis</h2>
-        {/* Radar chart placeholder — BACKLOG #3 (requires recharts install) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {d.skill_analysis.map((skill) => {
-            const meta = SIGNAL_META[skill.parameter_id];
-            const barsLabel = getBarsLabel(skill.parameter_id, skill.rating);
-            const cardAccent =
-              skill.rating >= 4 ? "border-emerald-100 hover:border-emerald-200" :
-              skill.rating >= 3 ? "border-gray-100 hover:border-gray-200" :
-              "border-red-100 hover:border-red-200";
-            return (
-              <div
-                key={skill.parameter_id}
-                className={`rounded-xl border p-5 space-y-3 transition-colors ${cardAccent}`}
-              >
-                <div className="space-y-2">
-                  <h3 className="text-[10px] font-semibold tracking-wider text-gray-500 uppercase">
-                    {meta?.name ?? skill.parameter_id}
-                  </h3>
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <RatingDots rating={skill.rating} />
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
-                      skill.rating >= 4 ? "bg-emerald-50 text-emerald-700" :
-                      skill.rating >= 3 ? "bg-blue-50 text-blue-700" :
-                      "bg-red-50 text-red-600"
-                    }`}>
-                      {barsLabel}
+      {/* ═══ 01 — What Happened: the question-by-question walkthrough ═══ */}
+      {walkthrough.length > 0 && (
+        <div className="space-y-6">
+          <SectionHeading
+            n="01"
+            title="What Happened"
+            sub="A walkthrough of the interview itself — what you said in each answer, and what it signaled to the interviewer."
+          />
+          <ol className="relative space-y-0">
+            {walkthrough
+              .slice()
+              .sort((a, b) => a.question_number - b.question_number)
+              .map((entry, i, arr) => (
+                <li key={entry.question_number} className="relative flex gap-4 pb-6 last:pb-0">
+                  {/* timeline rail */}
+                  <div className="flex flex-col items-center shrink-0">
+                    <span className="w-7 h-7 rounded-full bg-gray-950 text-white text-[11px] font-bold flex items-center justify-center font-mono">
+                      {entry.question_number}
                     </span>
+                    {i < arr.length - 1 && <span className="w-px flex-1 bg-gray-200 mt-1" aria-hidden="true" />}
                   </div>
-                </div>
-                <p className="text-sm text-gray-700 leading-relaxed">{skill.reasoning}</p>
-                {skill.evidence_quotes?.length > 0 && (
-                  <div className="space-y-2 border-l-2 border-gray-200 pl-3 mt-2">
-                    {skill.evidence_quotes.slice(0, 2).map((q, i) => (
-                      <p key={i} className="text-xs text-gray-500 italic leading-relaxed">"{q}"</p>
-                    ))}
+                  <div className="space-y-2 pt-0.5 min-w-0">
+                    <p className="text-sm text-gray-800 leading-relaxed">{entry.key_takeaway}</p>
+                    {entry.signal_ids?.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {entry.signal_ids.map((sid) => (
+                          <span key={sid} className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                            {SIGNAL_META[sid]?.name ?? sid}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            );
-          })}
+                </li>
+              ))}
+          </ol>
         </div>
-      </div>
+      )}
 
-      <hr className="border-gray-100" />
-
-      {/* Key Moments — derived from skill_analysis highs and lows */}
+      {/* ═══ 02 — Key Moments — derived from skill_analysis highs and lows ═══ */}
       {(() => {
         const sorted = [...d.skill_analysis].sort((a, b) => b.rating - a.rating);
         const positive = sorted.filter((s) => s.rating >= 4).slice(0, 2);
@@ -486,23 +505,20 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
         ];
         if (moments.length === 0) return null;
         return (
-          <div className="space-y-4">
-            <h2 className="text-xs font-semibold tracking-widest text-gray-400 uppercase">Key Moments</h2>
-            <div className="space-y-3">
+          <div className="space-y-6">
+            <SectionHeading n="02" title="Key Moments" sub="The highest- and lowest-signal moments from the session." />
+            <div className="space-y-4">
               {moments.map((m) => (
-                <div key={m.parameter_id} className="flex gap-3">
-                  <span className={`mt-1 shrink-0 text-xs font-bold ${m.positive ? "text-emerald-500" : "text-red-400"}`} aria-hidden="true">
-                    {m.positive ? "+" : "−"}
-                  </span>
+                <div key={m.parameter_id} className={`flex gap-3 border-l-2 pl-4 ${m.positive ? "border-emerald-300" : "border-red-300"}`}>
                   <div className="space-y-1">
                     <h3 className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">
-                      {m.positive ? "Strength: " : "Weak spot: "}
+                      {m.positive ? "Strength — " : "Weak spot — "}
                       {SIGNAL_META[m.parameter_id]?.name ?? m.parameter_id}
                     </h3>
                     {m.evidence_quotes?.[0] && (
-                      <p className="text-xs text-gray-400 italic">"{m.evidence_quotes[0]}"</p>
+                      <p className="text-xs text-gray-400 italic">&ldquo;{m.evidence_quotes[0]}&rdquo;</p>
                     )}
-                    <p className="text-sm text-gray-700">{m.reasoning}</p>
+                    <p className="text-sm text-gray-700 leading-relaxed">{m.reasoning}</p>
                   </div>
                 </div>
               ))}
@@ -511,11 +527,103 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
         );
       })()}
 
-      <hr className="border-gray-100" />
+      {/* ═══ 03 — Signal Analysis ═══ */}
+      <div className="space-y-6">
+        <SectionHeading
+          n="03"
+          title="Signal Analysis"
+          sub="8 BARS-scored signals, each backed by verbatim evidence. Signals rated 3 or below include a framework to fix the gap."
+        />
+        <div className="space-y-4">
+          {d.skill_analysis.map((skill) => {
+            const meta = SIGNAL_META[skill.parameter_id];
+            const barsLabel = getBarsLabel(skill.parameter_id, skill.rating);
+            const isWeak = skill.rating <= 3;
+            const accent =
+              skill.rating >= 4 ? "border-l-emerald-300" :
+              skill.rating >= 3 ? "border-l-gray-300" :
+              "border-l-red-300";
+            const framework = isWeak ? SIGNAL_FRAMEWORKS[skill.parameter_id] : undefined;
+            const modelAnswer = modelAnswersByParam.get(skill.parameter_id);
+            return (
+              <div
+                key={skill.parameter_id}
+                className={`rounded-xl border border-gray-100 border-l-4 p-5 space-y-3 ${accent}`}
+              >
+                <div className="space-y-2">
+                  <h3 className="text-[10px] font-semibold tracking-wider text-gray-500 uppercase">
+                    {meta?.name ?? skill.parameter_id}
+                  </h3>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <RatingDots rating={skill.rating} />
+                    <span className={clsx("text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0",
+                      skill.rating >= 4 ? "bg-emerald-50 text-emerald-700" :
+                      skill.rating >= 3 ? "bg-gray-100 text-gray-600" :
+                      "bg-red-50 text-red-600"
+                    )}>
+                      {barsLabel}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-700 leading-relaxed">{skill.reasoning}</p>
+                {skill.evidence_quotes?.length > 0 && (
+                  <div className="space-y-2 border-l-2 border-gray-200 pl-3 mt-2">
+                    {skill.evidence_quotes.slice(0, 2).map((q, i) => (
+                      <p key={i} className="text-xs text-gray-500 italic leading-relaxed">&ldquo;{q}&rdquo;</p>
+                    ))}
+                  </div>
+                )}
 
-      {/* Behavioral Insights */}
-      <div className="space-y-4">
-        <h2 className="text-xs font-semibold tracking-widest text-gray-400 uppercase">Behavioral Insights</h2>
+                {/* Finding #4 — deterministic framework callout for weak signals */}
+                {framework && (
+                  <div className="rounded-lg bg-gray-50 border border-gray-100 p-3.5 mt-3 space-y-2">
+                    <p className="text-[10px] font-semibold tracking-wider text-gray-500 uppercase">
+                      Framework to fix this — {framework.name}
+                    </p>
+                    <ol className="space-y-1">
+                      {framework.steps.map((step, i) => (
+                        <li key={i} className="flex items-baseline gap-2 text-xs text-gray-700">
+                          <span className="font-mono text-gray-400 shrink-0">{i + 1}.</span>
+                          <span>{step}</span>
+                        </li>
+                      ))}
+                    </ol>
+                    <p className="text-xs text-gray-500 leading-relaxed pt-1 border-t border-gray-200/70">{framework.howToApply}</p>
+                  </div>
+                )}
+
+                {/* Finding #5 — model answer excerpt, grounded in the actual question asked */}
+                {modelAnswer && (
+                  <div className="rounded-lg bg-emerald-50/50 border border-emerald-100 p-3.5 mt-3 space-y-1.5">
+                    <p className="text-[10px] font-semibold tracking-wider text-emerald-700 uppercase">
+                      What a stronger answer to Q{modelAnswer.question_number} might have sounded like
+                    </p>
+                    <p className="text-sm text-gray-800 leading-relaxed italic">&ldquo;{modelAnswer.model_excerpt}&rdquo;</p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ═══ 04 — Conversational Metrics ═══ */}
+      <div className="space-y-6">
+        <SectionHeading
+          n="04"
+          title="Conversational Metrics"
+          sub="How the interview flowed, independent of content — measured against interview-research benchmarks."
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {buildMetrics(d.metrics).map((m) => (
+            <MetricCard key={m.label} m={m} />
+          ))}
+        </div>
+      </div>
+
+      {/* ═══ 05 — Behavioral Insights ═══ */}
+      <div className="space-y-6">
+        <SectionHeading n="05" title="Behavioral Insights" />
         <div className="flex flex-wrap items-stretch gap-3">
           <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
             <h3 className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase mb-2">STAR Adherence</h3>
@@ -555,11 +663,9 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
         )}
       </div>
 
-      <hr className="border-gray-100" />
-
-      {/* Actionable Feedback */}
-      <div className="space-y-5">
-        <h2 className="text-xs font-semibold tracking-widest text-gray-400 uppercase">Actionable Feedback</h2>
+      {/* ═══ 06 — Action Plan ═══ */}
+      <div className="space-y-6">
+        <SectionHeading n="06" title="Action Plan" sub="What to keep doing, and the one thing to fix before your next round." />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <div className="space-y-3">
             <h3 className="text-[10px] font-semibold tracking-wider text-emerald-600 uppercase">Strengths</h3>
@@ -593,9 +699,9 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
       </div>
 
       <div className="pt-2">
-        <a href="/" className="text-sm text-gray-400 hover:text-gray-700 transition-colors">
+        <Link href="/" className="text-sm text-gray-400 hover:text-gray-700 transition-colors">
           ← Start another interview
-        </a>
+        </Link>
       </div>
     </div>
   );
