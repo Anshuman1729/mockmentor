@@ -12,7 +12,7 @@ function getClient(): Groq {
   return _client;
 }
 
-const MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
+const MODEL = "openai/gpt-oss-120b";
 
 export interface QAPair {
   question_number: number;

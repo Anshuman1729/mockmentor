@@ -29,7 +29,7 @@ export default async function LandingPage() {
       <main>
         {/* Hero — user-first, concrete, no AI slop */}
         <section className="mx-auto max-w-6xl px-6 pt-24 pb-16 md:pt-36 md:pb-24">
-          <div className="grid gap-12 md:grid-cols-2 md:items-center md:gap-16">
+          <div className="grid gap-12 md:grid-cols-2 md:items-center md:gap-16 lg:gap-20">
             <div className="space-y-8">
               <h1 className="text-5xl font-extrabold leading-[1.1] tracking-tight text-gray-950 md:text-6xl lg:text-7xl">
                 You lose the offer before you walk in. <br/>
