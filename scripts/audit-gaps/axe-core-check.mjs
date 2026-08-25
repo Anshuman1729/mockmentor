@@ -2,7 +2,7 @@
 // axe-core audit — Phase 1 audit gap closure
 // Usage: node scripts/audit-gaps/axe-core-check.mjs --url=http://localhost:3000
 
-const { execSync } = require('child_process');
+import { execSync } from 'child_process';
 const url = process.argv.find(a => a.startsWith('--url='))?.split('=')[1] ?? 'http://localhost:3000';
 
 console.log(`[axe-core] Running accessibility audit against ${url}...`);
