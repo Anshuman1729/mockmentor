@@ -91,6 +91,13 @@ Playwright browsing + screenshots, not code self-review:
   announces — removed.
 - Deduplicated `DebriefLoadingScreen`, which was byte-identical in `InterviewRoom.tsx`
   and `/dev/loading` (drift risk) — now a shared component.
+- **Closed Backlog #10/#11**: `answer_duration_sec` (longest monologue) and
+  `candidate_questions_asked` were already being collected but never surfaced anywhere.
+  Now injected into `debrief.metrics` in the debrief route and rendered as plain,
+  ungraded stat tiles — deliberately *not* forced into the existing ideal/watch/flag
+  MetricCard styling, since neither has a research-backed benchmark the way the four
+  existing metrics do, and CLAUDE.md is explicit those shouldn't change without new
+  research.
 - Fixed the 8 pre-existing ESLint errors in `DebriefReport.tsx` (unescaped quotes, raw
   `<a>` instead of `Link`) while already in the file, plus 2 similar ones in the
   homepage.
@@ -129,9 +136,6 @@ changed tonight. Every visual change was checked via Playwright screenshots at b
 and then confirmed the fix for the sticky-banner bug.
 
 ## What's still open
-- **#10/#11 from the backlog**: `answer_duration_sec` and `candidate_questions_asked` are
-  both collected but still not surfaced in the conversational metrics cards. Real,
-  scoped, not done tonight — next highest-leverage thing after this.
 - **Sarvam STT realtime WebSocket** — untouched, needs you present (see above).
 - The interview room and homepage weren't put through persona review as deeply as the
   debrief — homepage got one solid pass (positive), the interview room was reviewed as

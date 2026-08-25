@@ -118,7 +118,7 @@ npm run test:coverage        # vitest with coverage
 | Fixed verdict banner permanently stuck via unbounded `sticky` (covered content for the entire scroll, both mobile and desktop) | ✅ Done — found via persona review, was a real severe bug |
 | Above-the-fold summary (bottom-line fix + quick nav) so a long report isn't "nothing to grab onto" before scrolling | ✅ Done |
 | `/dev/debrief` mock preview (+ `?scenario=strong` / `?scenario=nohire`) for DB-free visual QA | ✅ Done |
-| Longest-monologue / candidate-question-rate surfaced in metrics cards (Backlog #10/#11 — data already collected, not yet rendered) | ⬛ Not done this session — real gap, next up |
+| Longest-monologue / candidate-question-rate surfaced in metrics cards (Backlog #10/#11) | ✅ Done — plain ungraded stats, no invented benchmark |
 
 ### Intelligence DB (`feat/intelligence-db-fatal-flag`)
 | Item | Status |

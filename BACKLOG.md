@@ -27,9 +27,9 @@ Playwright and reporting back real UX friction — not just self-review.
 | **Above-the-fold summary** | A "Bottom line" line in the verdict banner + a quick-nav anchor row, so a first-time reader has something to act on before scrolling a long report (flagged by PM-persona review). |
 | **`/dev/debrief` mock preview** | New DB-free preview route (`?scenario=strong` / `?scenario=nohire` variants) mirroring the `/dev/loading` pattern — lets the whole redesign be visually verified without a live database or LLM call. |
 | **`DebriefLoadingScreen` deduplication** | Was byte-identical in `InterviewRoom.tsx` and `/dev/loading` — extracted to `components/DebriefLoadingScreen.tsx` so the two can't drift. |
+| **#10/#11 UI surfacing** | `answer_duration_sec` (longest monologue) and `candidate_questions_asked` now injected into `debrief.metrics` in the debrief route and rendered as plain, ungraded stat tiles — no invented benchmark, since neither has research backing yet unlike the four existing metric cards. |
 
 ### Still open from this pass
-- **#10/#11 UI surfacing** — `answer_duration_sec` and `candidate_questions_asked` are collected but still not rendered in the conversational metrics cards. Real, scoped, not done tonight.
 - **Sarvam STT realtime WebSocket** — deliberately not attempted (see previous handoff); needs a human present to decide browser-direct-vs-proxied architecture and test against a real key.
 - Dashboard/`SetupForm` got a lighter consistency pass (dropped the generic blue "AI Setup" pill, matched card styling to the homepage) but wasn't redesigned as deeply as the debrief — the highest-leverage surface for now was the debrief per explicit user feedback.
 
@@ -185,13 +185,14 @@ Playwright and reporting back real UX friction — not just self-review.
 - Still needed: "Did you get the job?" prompt after 2 weeks (email or in-app)
 - **Target**: Start tracking after 50 paying users
 
-### 10. Longest Monologue Tracking ✅ Done (instrumentation complete, UI pending)
-- `qa_pairs.answer_duration_sec` stored per answer
-- Still needed: Surface longest monologue in conversational metrics card in `DebriefReport.tsx`
+### 10. Longest Monologue Tracking ✅ Done (2026-08-27)
+- `qa_pairs.answer_duration_sec` stored per answer; debrief route now takes the max across the
+  session and injects it as `debrief.metrics.longest_monologue_sec`, rendered as a plain stat
+  tile in `DebriefReport.tsx`'s Conversational Metrics section.
 
-### 11. Question Rate Tracking ✅ Done (instrumentation complete, UI pending)
-- `sessions.candidate_questions_asked` stored
-- Still needed: Surface in conversational metrics card in `DebriefReport.tsx`
+### 11. Question Rate Tracking ✅ Done (2026-08-27)
+- `sessions.candidate_questions_asked` stored; debrief route now injects it as
+  `debrief.metrics.candidate_questions_asked`, rendered alongside #10 above.
 
 ### 12. Few-Shot Prompting ✅ Done
 - 3 examples (Strong Hire / No Hire / Borderline) injected in `generateDebrief()` system prompt
