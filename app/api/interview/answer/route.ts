@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
 
 const MIN_ANSWER_LENGTH = 50;
 
 export async function POST(req: NextRequest) {
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const { questionId, answer, answer_duration_sec } = await req.json();
 
     if (!questionId || answer === undefined || answer === null) {
