@@ -9,12 +9,28 @@ describe('fatal-flag', () => {
     const qas = [
       { question_number: 1, answer: null },
       { question_number: 2, answer: null },
-      { question_number: 3, answer: 'Yes' },
+      // isZeroSignal() also flags anything under 10 words as zero-signal, not
+      // just nulls/"I don't know" — a one-word answer like "Yes" would count
+      // as zero-signal too and push this to a 3/3 skip rate, not the 2/3 this
+      // test is meant to exercise. Needs a genuine, substantive answer here.
+      { question_number: 3, answer: 'I approached this by first analyzing the requirements, then designing a solution that could scale.' },
     ];
     const result = checkFatalFlag(qas, 3);
     // 2 of 3 answers are zero-signal → 66.7% skip rate > 30% threshold → triggered
     expect(result.triggered).toBe(true);
     expect(result.skipRate).toBeCloseTo(2/3, 2);
     expect(typeof result.skipRate).toBe('number');
+  });
+
+  it('does not trigger when a short-but-real answer is the only weak spot (1/4 zero-signal, below the 30% threshold)', () => {
+    const qas = [
+      { question_number: 1, answer: 'I approached this by first analyzing the requirements, then designing a solution that could scale.' },
+      { question_number: 2, answer: 'We diagnosed the issue by checking logs, isolating the failing service, then rolling back the deploy.' },
+      { question_number: 3, answer: 'I would start by profiling the query and checking whether the right indexes actually exist.' },
+      { question_number: 4, answer: 'Yes' }, // under 10 words — zero-signal, but only 1 of 4 (25%)
+    ];
+    const result = checkFatalFlag(qas, 4);
+    expect(result.triggered).toBe(false);
+    expect(result.skipRate).toBeCloseTo(1/4, 2);
   });
 });

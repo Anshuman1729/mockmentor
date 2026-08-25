@@ -144,9 +144,15 @@ export async function generateNextQuestion(
     ? `\nCandidate Resume / Background:\n${session.background}\n`
     : "";
 
+  const lastAnswer = previousQAs.filter((qa) => qa.answer !== null).slice(-1)[0];
+
   const questionInstruction = isFirstQuestion
     ? `This is question 1 of ${totalTarget}. Ask an open-ended opener to understand who the candidate is — their current role, key experience, and what they're looking to do next. Make it feel natural and conversational, not a checklist. Do NOT ask a technical question yet.`
-    : `Target ${totalTarget} questions total. You have asked ${answeredCount} so far.`;
+    : `Target ${totalTarget} questions total. You have asked ${answeredCount} so far.
+
+This is a live discussion, not a checklist being read out loud. Before writing your next question, decide: does the candidate's last answer deserve a follow-up — a specific claim worth probing, a detail worth digging into, an assumption worth testing — or have you learned enough on this topic to move on?
+Default to following up at least once per topic. When you do follow up, reference something specific they actually said (quote or paraphrase it) — don't ask a generic pre-written question that ignores their answer.
+${lastAnswer ? `\nTheir last answer was: "${lastAnswer.answer}"` : ""}`;
 
   const roundInstructions = buildRoundInstructions(session.round_type);
   const difficultyInstruction = buildDifficultyInstruction(session.yoe);
@@ -171,11 +177,13 @@ ${difficultyInstruction}
 
 ${questionInstruction}
 ${seedSection}
+Ask exactly ONE question. Do not list multiple questions, do not use bullet points or numbered sub-parts, and do not stack several "and also..." clauses onto one ask. If there are several angles worth exploring, pick the single most important one now — you'll get another turn to follow up based on their answer.
+
 Output ONLY the next interview question. No preamble, no labels, no explanation.`;
 
   const completion = await getClient().chat.completions.create({
     model: MODEL,
-    max_tokens: 300,
+    max_tokens: 220,
     messages: [
       { role: "system", content: systemPrompt },
       {
@@ -222,7 +230,7 @@ Q: "Your distributed training job is experiencing gradient staleness with async 
 
   const completion = await getClient().chat.completions.create({
     model: MODEL,
-    max_tokens: 300,
+    max_tokens: 220,
     messages: [
       {
         role: "system",
@@ -231,7 +239,7 @@ Q: "Your distributed training job is experiencing gradient staleness with async 
 ${fewShotExamples}
 ${companyContextBlock}
 RULES:
-- Ask one question only. No preamble.
+- Ask exactly ONE question. No preamble, no bullet points, no numbered sub-parts, no stacked "and also..." clauses.
 - Questions must require deep ${domain} expertise — a generic backend interviewer should not know to ask this.
 - Adapt depth to YOE: ${session.yoe} years of experience.
 - Do not repeat topics from previous Q&As.${session.jd_content ? `\n- Stay relevant to the JD: ${session.jd_content.slice(0, 800)}` : ""}${session.background ? `\n- Tailor to candidate background: ${session.background.slice(0, 500)}` : ""}`,

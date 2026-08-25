@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useTTS } from "@/hooks/useTTS";
 import { useSTT } from "@/hooks/useSTT";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
+import { VoiceOrb } from "@/components/VoiceOrb";
 import { Mic, MicOff, Settings, ChevronRight, CheckCircle2 } from "lucide-react";
 import { clsx } from "clsx";
 
@@ -17,7 +18,8 @@ type RoomState =
   | "speaking"
   | "listening"
   | "submitting"
-  | "generating-debrief";
+  | "generating-debrief"
+  | "debrief-failed";
 
 interface QuestionState {
   questionId: string;
@@ -89,7 +91,7 @@ function DebriefLoadingScreen() {
 
 export default function InterviewRoom({ sessionId }: { sessionId: string }) {
   const router = useRouter();
-  const { speak, cancel: cancelTTS, isSpeaking, rate, cycleRate, muted, toggleMute } = useTTS();
+  const { speak, cancel: cancelTTS, isSpeaking, rate, cycleRate, muted, toggleMute, analyserRef: ttsAnalyserRef } = useTTS();
   const {
     start: startSTT,
     stop: stopSTT,
@@ -101,7 +103,8 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     hasNetworkError: sttNetworkError,
   } = useSTT();
 
-  const { startRecording, stopRecording, discardRecording, isRecording } = useAudioRecorder();
+  const { startRecording, stopRecording, discardRecording, isRecording, analyserRef: micAnalyserRef } = useAudioRecorder();
+  const idleAnalyserRef = useRef<AnalyserNode | null>(null);
 
   const [roomState, setRoomState] = useState<RoomState>("init");
   const [current, setCurrent] = useState<QuestionState | null>(null);
@@ -167,12 +170,46 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     }
   }, [roomState, sttSupported, isListening, isSpeaking, sttNetworkError, startSTT]);
 
+  // ── Debrief generation — isolated from question-fetch so a failure here
+  // never gets treated as "submit another answer to retry" (that was the
+  // bug: both used to share one catch block, silently landing back in
+  // "listening" with no way to retry debrief generation except answering
+  // an already-finished interview again). Exposed as its own callback so
+  // the debrief-failed screen can call it directly to retry.
+  const generateDebrief = useCallback(async () => {
+    setRoomState("generating-debrief");
+    setError(null);
+    try {
+      // Flush candidate_questions_asked before generating debrief (#11)
+      await fetch(`/api/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidate_questions_asked: candidateQuestions }),
+      }).catch(() => {/* non-fatal */});
+
+      const dr = await fetch("/api/interview/debrief", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+      const dd = await dr.json();
+      if (!dr.ok) throw new Error(dd.error ?? "Failed to generate debrief");
+      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+      router.push(`/debrief/${sessionId}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate your debrief");
+      setRoomState("debrief-failed");
+    }
+  }, [sessionId, router, candidateQuestions]);
+
   // ── Fetch question → speak → listen ─────────────────────────────────────────
   const fetchNextQuestion = useCallback(async () => {
     setRoomState("loading-question");
     setError(null);
     resetSTT();
     setFallbackText("");
+
+    let q: QuestionState | null = null;
 
     try {
       const res = await fetch("/api/interview/question", {
@@ -184,46 +221,44 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       if (!res.ok) throw new Error(data.error ?? "Failed to load question");
 
       if (data.done) {
-        // Flush candidate_questions_asked before generating debrief (#11)
-        await fetch(`/api/sessions/${sessionId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ candidate_questions_asked: candidateQuestions }),
-        }).catch(() => {/* non-fatal */});
-
-        setRoomState("generating-debrief");
-        const dr = await fetch("/api/interview/debrief", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId }),
-        });
-        const dd = await dr.json();
-        if (!dr.ok) throw new Error(dd.error ?? "Failed to generate debrief");
-        if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
-        router.push(`/debrief/${sessionId}`);
+        await generateDebrief();
         return;
       }
 
-      const q: QuestionState = {
+      q = {
         questionId: data.questionId,
         question: data.question,
         questionNumber: data.questionNumber,
         total: data.total,
       };
       setCurrent(q);
-      setRoomState("speaking");
-      await speak(q.question);
-      setRoomState("listening");
-      answerStartTimeRef.current = Date.now();
-      startSTT();
-      await startRecording();
     } catch (err) {
+      // A real fetch failure — the question genuinely wasn't generated.
+      // This is the only path that should treat things as "try again".
       setError(err instanceof Error ? err.message : "Something went wrong");
       setRoomState("listening");
       startSTT();
       await startRecording();
+      return;
     }
-  }, [sessionId, router, speak, resetSTT, startSTT, startRecording]);
+
+    // The question is loaded and already visible on screen at this point.
+    // Speaking it is a separate concern — if TTS fails (bad audio, network,
+    // provider hiccup) that must NOT look like "no question was generated":
+    // don't refetch, just surface a message and let the user read it or hit
+    // 🔊 Replay to retry the audio.
+    setRoomState("speaking");
+    try {
+      await speak(q.question);
+    } catch (speakErr) {
+      console.error("[TTS] speak failed:", speakErr);
+      setError("Voice playback failed — read the question below, or tap 🔊 Replay to try again.");
+    }
+    setRoomState("listening");
+    answerStartTimeRef.current = Date.now();
+    startSTT();
+    await startRecording();
+  }, [sessionId, speak, resetSTT, startSTT, startRecording, generateDebrief]);
 
   // Load session on mount — show TMAY step if no background, else load first question
   useEffect(() => {
@@ -429,15 +464,11 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
         <div className="flex-1 flex items-center justify-center relative overflow-hidden px-6">
           <div className="flex flex-col items-center gap-6 text-center max-w-xl w-full">
             <div className="relative flex items-center justify-center w-28 h-28">
-              {isSpeaking && (
-                <>
-                  <span className="absolute inset-0 rounded-full border-2 border-blue-400 animate-ping opacity-30" />
-                  <span className="absolute inset-2 rounded-full border border-blue-400/50 animate-ping opacity-20" />
-                </>
-              )}
-              <span className={`text-6xl transition-transform duration-300 ${isSpeaking ? "scale-110" : "scale-100"}`}>
-                🤖
-              </span>
+              <VoiceOrb
+                analyserRef={isSpeaking ? ttsAnalyserRef : micAnalyserRef}
+                variant={isSpeaking ? "speaking" : "listening"}
+                size={112}
+              />
             </div>
             <div className="space-y-2">
               <p className="text-xs font-semibold text-gray-400 tracking-widest uppercase">AI Interviewer</p>
@@ -472,30 +503,18 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
 
         <div className="px-6 pb-3">
           {sttSupported ? (
-            <div className="relative rounded-xl border border-white/10 bg-white/5 px-4 py-3 min-h-14">
-              {!isSpeaking && (
-                <span className="absolute top-2 right-3 text-xs text-yellow-400/60 uppercase tracking-wider font-mono">
-                  Rough Draft
-                </span>
-              )}
-              {(transcript + interimTranscript).trim() ? (
-                <p className="text-sm text-white/90 leading-relaxed pr-24">
-                  {transcript}
-                  {interimTranscript && <span className="text-white/40 italic">{interimTranscript}</span>}
-                </p>
-              ) : sttNetworkError && !isSpeaking ? (
+            <div className="relative rounded-xl border border-white/10 bg-white/5 px-4 py-3 min-h-14 flex items-center">
+              {!isSpeaking ? (
                 <div className="flex items-center gap-3 py-0.5">
                   <span className="flex items-end gap-[3px] h-4 shrink-0">
                     {[40, 80, 55, 90, 45].map((h, i) => (
-                      <span key={i} className="w-[3px] rounded-full bg-blue-400/60 animate-pulse" style={{ height: `${h}%`, animationDelay: `${i * 130}ms` }} />
+                      <span key={i} className="w-[3px] rounded-full bg-green-400/60 animate-pulse" style={{ height: `${h}%`, animationDelay: `${i * 130}ms` }} />
                     ))}
                   </span>
-                  <span className="text-sm text-white/50">Recording your answer <span className="text-xs text-white/25">— Whisper transcribes on submit</span></span>
+                  <span className="text-sm text-white/50">Listening — your answer is being captured<span className="text-xs text-white/25"> (transcribed accurately on submit)</span></span>
                 </div>
               ) : (
-                <p className="text-sm text-white/25 italic">
-                  {!isSpeaking ? "Introduce yourself — your role, experience, and goals…" : ""}
-                </p>
+                <p className="text-sm text-white/25 italic">Introduce yourself — your role, experience, and goals…</p>
               )}
             </div>
           ) : (
@@ -577,6 +596,29 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     return <DebriefLoadingScreen />;
   }
 
+  // ── Debrief failed — dedicated retry, not "answer another question" ──────────
+  if (roomState === "debrief-failed") {
+    return (
+      <div className="fixed inset-0 bg-gray-950 flex flex-col items-center justify-center gap-6 text-white z-50 px-6 text-center">
+        <div className="w-14 h-14 rounded-full bg-red-500/15 flex items-center justify-center">
+          <span className="text-2xl">⚠️</span>
+        </div>
+        <div className="space-y-2 max-w-sm">
+          <p className="text-lg font-semibold tracking-tight">Couldn&apos;t generate your debrief</p>
+          <p className="text-sm text-gray-400">
+            {error ?? "Something went wrong while putting your report together."}
+          </p>
+        </div>
+        <Button
+          onClick={generateDebrief}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-6 h-[44px] min-w-[140px]"
+        >
+          Try again
+        </Button>
+      </div>
+    );
+  }
+
   // ── Room ─────────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 bg-gradient-to-b from-gray-950 via-gray-900 to-gray-950 flex flex-col text-white z-50 select-none">
@@ -610,21 +652,25 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
         {/* AI interviewer */}
         <div className="flex flex-col items-center gap-6 text-center max-w-xl w-full">
 
-          {/* Avatar with pulse when speaking */}
+          {/* Voice orb — audio-reactive: TTS output while speaking, mic input while listening */}
           <div className="relative flex items-center justify-center w-28 h-28">
-            {(roomState === "speaking" || isSpeaking) && (
-              <>
-                <span className="absolute inset-0 rounded-full border-2 border-blue-400 animate-ping opacity-30" />
-                <span className="absolute inset-2 rounded-full border border-blue-400/50 animate-ping opacity-20 animation-delay-150" />
-              </>
-            )}
-            <span
-              className={`text-6xl transition-transform duration-300 ${
-                isSpeaking ? "scale-110" : "scale-100"
-              }`}
-            >
-              🤖
-            </span>
+            <VoiceOrb
+              analyserRef={
+                roomState === "speaking" || isSpeaking
+                  ? ttsAnalyserRef
+                  : roomState === "listening"
+                  ? micAnalyserRef
+                  : idleAnalyserRef
+              }
+              variant={
+                roomState === "speaking" || isSpeaking
+                  ? "speaking"
+                  : roomState === "listening"
+                  ? "listening"
+                  : "idle"
+              }
+              size={112}
+            />
           </div>
 
           {/* Label + status pill */}
@@ -687,34 +733,18 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       {/* ── Transcript / answer ── */}
       <div className="px-6 pb-3">
         {sttSupported ? (
-          <div className="relative rounded-xl border border-white/10 bg-white/5 px-4 py-3 min-h-14">
-            {roomState === "listening" && (
-              <span className="absolute top-2 right-3 text-xs text-yellow-400/60 uppercase tracking-wider font-mono">
-                Rough Draft
-              </span>
-            )}
-            {(transcript + interimTranscript).trim() ? (
-              <p className="text-sm text-white/90 leading-relaxed pr-24">
-                {transcript}
-                {interimTranscript && (
-                  <span className="text-white/40 italic">{interimTranscript}</span>
-                )}
-              </p>
-            ) : sttNetworkError && roomState === "listening" ? (
+          <div className="relative rounded-xl border border-white/10 bg-white/5 px-4 py-3 min-h-14 flex items-center">
+            {roomState === "listening" ? (
               <div className="flex items-center gap-3 py-0.5">
                 <span className="flex items-end gap-[3px] h-4 shrink-0">
                   {[40, 80, 55, 90, 45].map((h, i) => (
-                    <span key={i} className="w-[3px] rounded-full bg-blue-400/60 animate-pulse" style={{ height: `${h}%`, animationDelay: `${i * 130}ms` }} />
+                    <span key={i} className="w-[3px] rounded-full bg-green-400/60 animate-pulse" style={{ height: `${h}%`, animationDelay: `${i * 130}ms` }} />
                   ))}
                 </span>
-                <span className="text-sm text-white/50">Recording your answer <span className="text-xs text-white/25">— Whisper transcribes on submit</span></span>
+                <span className="text-sm text-white/50">Listening — your answer is being captured<span className="text-xs text-white/25"> (transcribed accurately on submit)</span></span>
               </div>
             ) : (
-              <p className="text-sm text-white/25 italic">
-                {roomState === "listening"
-                  ? "Speak your answer — AI will transcribe accurately on submit…"
-                  : "Your answer will appear here."}
-              </p>
+              <p className="text-sm text-white/25 italic">Your answer will appear here.</p>
             )}
           </div>
         ) : (
