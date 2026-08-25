@@ -2,7 +2,7 @@
 
 ## What This App Is
 PrepSignals is an AI-powered mock interview platform. Tagline: "Know exactly where you'd lose the offer — before you walk in."
-Stack: Next.js 16 (App Router), TypeScript, Tailwind CSS, Neon Postgres, Groq API (Llama 4 Scout 17B MoE + Whisper v3 Turbo), Sarvam AI TTS, Resend, Clerk auth.
+Stack: Next.js 16 (App Router), TypeScript, Tailwind CSS, Neon Postgres, Groq API (`openai/gpt-oss-120b` + Whisper v3 Turbo — Llama 4 Scout was swapped out after Groq decommissioned Llama 3.3; gpt-oss defaults to `reasoning_effort: "medium"`, which the question-generation calls override to `"low"` to avoid burning the token budget on hidden reasoning before the answer), Sarvam AI TTS (`bulbul:v3` via the `/text-to-speech/stream` HTTP streaming endpoint), Resend, Clerk auth.
 
 ## Non-Negotiable Rules
 
@@ -30,10 +30,10 @@ Stack: Next.js 16 (App Router), TypeScript, Tailwind CSS, Neon Postgres, Groq AP
 ## Key Architecture Decisions
 - **Evidence-first scoring**: LLM extracts verbatim quotes per signal; TS calculates hire_probability (vibe-proof)
 - **Seniority modifiers**: `calculateNormalizedScore()` applies Junior/Mid/Senior weights from `lib/rubric-researched.ts`
-- **Round-dynamic question counts**: screening=5, technical=8, final=10, behavioural=7
+- **Round-dynamic question counts** (`QUESTIONS_BY_ROUND` in `app/api/interview/question/route.ts`): technical_screen=5, technical_deep_dive=8, system_design=6, behavioural=7, final=8, hr_screen=5, case_study=5. (This line previously said "screening=5, technical=8, final=10, behavioural=7" — final was wrong (10 vs actual 8), and several round types weren't listed at all.)
 - **Lazy Groq client**: instantiated on first use to avoid build-time env var errors
-- **Signal-Seeking Seeding** (planned — `feat/intelligence-db-fatal-flag`): question route fetches a verified seed from `question_bank` (company + round_type match, excluding already-used seeds). Seed passed to `generateNextQuestion` which LLM-adapts it to target uncovered signals.
-- **Fatal Flag** (planned): `lib/fatal-flag.ts` — deterministic, no LLM. Zero signal = null answer, <10 words, or "I don't know" phrases. >30% skip rate → force "No Hire", cap hire_probability ≤30.
+- **Signal-Seeking Seeding** (done — landed via `feat/intelligence-db-fatal-flag`, this line previously said "planned" which contradicted the PRD Status table below marking it ✅ Done): question route fetches a verified seed from `question_bank` (domain → company → generic match, excluding already-used seeds), only for technical-style rounds (see `seedRoundType()` — HR/behavioral rounds never use domain-seeded generation, since it has no round-type awareness of its own). Seed passed to `generateNextQuestion` which LLM-adapts it to target uncovered signals.
+- **Fatal Flag** (done, same stale-"planned" fix as above): `lib/fatal-flag.ts` — deterministic, no LLM. Zero signal = null answer, <10 words, or "I don't know" phrases. >30% skip rate → force "No Hire", cap hire_probability ≤30.
 
 ## Metric Benchmarks (research-backed — do not change without new research)
 | Metric | Target | High Risk | Low Risk |
@@ -48,9 +48,12 @@ Stack: Next.js 16 (App Router), TypeScript, Tailwind CSS, Neon Postgres, Groq AP
 npm run test:debrief         # seed mock session + debrief (no LLM, instant)
 npm run test:debrief:live    # seed + call real API (dev server must be running)
 npm run test:debrief:clean   # delete test sessions, seed fresh
+npm run test                 # vitest unit tests (lib/rubric-researched.ts, lib/fatal-flag.ts)
+npm run test:coverage        # vitest with coverage
 ```
 - Loading screen preview: `http://localhost:3000/dev/loading`
 - Test sessions use `user_email = 'test@prepsignals.dev'`
+- `scripts/audit-gaps/lighthouse-check.mjs` and `axe-core-check.mjs` exist for perf/a11y checks against a running dev server — not wired into CI yet, run manually
 
 ## DB Schema Notes
 - `debriefs` columns: `debrief_data` (JSONB, user-facing), `reasoning` (JSONB, internal), `actual_outcome` (TEXT), `company_type` (TEXT), `tokens_used` (JSONB: `{input_tokens, output_tokens, model}`)
@@ -73,7 +76,7 @@ npm run test:debrief:clean   # delete test sessions, seed fresh
 | Session history | ✅ Done |
 | Profile/TMAY step | ✅ Done |
 | STT fix + error handling | ✅ Done |
-| Mobile responsiveness | ❓ Not verified |
+| Mobile responsiveness | 🟡 Addressed (98e1877, then a consistency pass 2026-08-26) — fixed via static code analysis only; still needs a real visual pass in a browser against a live session (interview room / debrief with real content) before calling it verified |
 | Landing page with CTA | ❓ Not tracked |
 
 ### Batch Implementation (2026-03-07)
@@ -110,7 +113,7 @@ npm run test:debrief:clean   # delete test sessions, seed fresh
 | Missing-signal rawScores defaulted to 0 | ✅ Done (PR 1) |
 | CC0 ingestion script (`scripts/seed-intelligence.ts`) | ✅ Code complete (PR 2) — needs live seed run to verify |
 | Signal-Seeking Seeding in `generateNextQuestion` | ✅ Done (PR 2) — seed fetched in question route (domain→company→generic), injected into prompt, `seed_question_id` persisted |
-| Calibration loop logging per session | 🟡 Partial (PR 2) — debrief route logs `ai_score` + `llm_reasoning`; outcome API does NOT yet backfill `actual_outcome`/`discrepancy_score` into `calibration_loops` |
+| Calibration loop logging per session | ✅ Done — debrief route logs `ai_score` + `llm_reasoning`; outcome API backfills `actual_outcome`/`discrepancy_score` into `calibration_loops` (commit `9bfe87b`) |
 
 ### Week 3+ — Monetisation
 - Free (₹0): 1 mock, basic debrief, limited signals
@@ -119,5 +122,5 @@ npm run test:debrief:clean   # delete test sessions, seed fresh
 
 ## Key User Feedback
 - Entry #1: Key Moments / specific question highlights explicitly valued — do not remove
-- Entry #4: TTS slightly slow (BACKLOG #8 pending). Loading time praised.
+- Entry #4: TTS slightly slow. Speed control + mute (BACKLOG #8) shipped since (was already done, backlog was stale); TTS also upgraded to `bulbul:v3` via the streaming endpoint (2026-08-26) as a further latency attempt — unverified against real user perception. Loading time praised.
 - Entry #1: "baaki this is pretty good man"

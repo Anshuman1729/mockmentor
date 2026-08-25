@@ -143,17 +143,12 @@
 - Add upgrade CTA below blurred signals
 - **Complexity**: S | **Deps**: #1, Clerk plan metadata setup
 
-### 7. Adaptive Waveform Animation (Reacts to Mic Input)
-- Current waveform is CSS-only (fixed pulse, doesn't reflect actual audio)
-- Use `AudioContext` + `AnalyserNode` on the mic stream to get real-time frequency data
-- Drive bar heights from `getByteFrequencyData()` on each animation frame
-- **Complexity**: S | **Deps**: None (mic stream already available in `useAudioRecorder.ts`)
+### 7. Adaptive Waveform Animation (Reacts to Mic Input) ✅ Done (2026-08-26)
+- Built as `components/VoiceOrb.tsx` — canvas-based, not the originally-imagined bars, but same mechanism: real `AnalyserNode.getByteFrequencyData()` amplitude driving the animation on every `requestAnimationFrame`, not a fixed CSS pulse.
+- Goes further than the original ask: reacts to the mic stream (`useAudioRecorder.ts`'s new `analyserRef`) while listening AND to the TTS output (`useTTS.ts`'s new `analyserRef`, tapped off the `<audio>` element via `createMediaElementSource`) while speaking. Falls back to a gentle synthetic breathing animation when no analyser is available yet, so it never looks frozen.
 
-### 8. TTS Speed Control (1x / 1.5x / 2x) + Mute Toggle
-- User feedback: TTS slightly slow; wants speed option and mute
-- Add speed multiplier to `useTTS.ts` and `/api/tts` or client-side HTML5 Audio `playbackRate`
-- Add mute toggle button in InterviewRoom controls bar
-- **Complexity**: S | **Deps**: None
+### 8. TTS Speed Control (1x / 1.5x / 2x) + Mute Toggle ✅ Done
+- Already implemented (see commit `1fe9319`, predates this backlog check) — `useTTS.ts` has `cycleRate`/`rate` (0.75x/1x/1.25x/1.5x, persisted to localStorage) and `toggleMute`/`muted`, both exposed as buttons in `InterviewRoom.tsx`'s controls bar. This item was stale in the backlog, not actually pending.
 
 ### 9. Outcome Tracking ✅ Done (API complete, UI pending)
 - `/api/sessions/[sessionId]/outcome` POST endpoint done
