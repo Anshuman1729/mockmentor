@@ -490,24 +490,29 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
             </div>
             <div className="space-y-2">
               <p className="text-xs font-semibold text-gray-400 tracking-widest uppercase">AI Interviewer</p>
-              {isSpeaking ? (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/15 text-blue-300 text-xs font-medium">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                  Speaking
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-500/15 text-green-300 text-xs font-medium">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                  Your turn
-                </span>
-              )}
+              <div role="status" aria-live="polite">
+                {isSpeaking ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/15 text-blue-300 text-xs font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" aria-hidden="true" />
+                    Speaking
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-500/15 text-green-300 text-xs font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" aria-hidden="true" />
+                    Your turn
+                  </span>
+                )}
+              </div>
             </div>
             <p className="text-xl leading-relaxed text-white/90 font-light">
               &ldquo;Before we begin, tell me about yourself — your current role, key experience, and what you&apos;re looking to achieve.&rdquo;
             </p>
           </div>
 
-          <div className="absolute bottom-4 right-4 w-32 h-24 sm:w-44 sm:h-32 rounded-2xl overflow-hidden border border-white/20 bg-gray-800 shadow-2xl">
+          <div
+            className="absolute bottom-4 right-4 w-32 h-24 sm:w-44 sm:h-32 rounded-2xl overflow-hidden border border-white/20 bg-gray-800 shadow-2xl"
+            aria-hidden="true"
+          >
             {cameraAllowed === false ? (
               <div className="w-full h-full flex items-center justify-center">
                 <span className="text-xs text-gray-400 text-center px-2">Camera off</span>
@@ -524,7 +529,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
             <div className="relative rounded-xl border border-white/10 bg-white/5 px-4 py-3 min-h-14 flex items-center">
               {!isSpeaking ? (
                 <div className="flex items-center gap-3 py-0.5">
-                  <span className="flex items-end gap-[3px] h-4 shrink-0">
+                  <span className="flex items-end gap-[3px] h-4 shrink-0" aria-hidden="true">
                     {[40, 80, 55, 90, 45].map((h, i) => (
                       <span key={i} className="w-[3px] rounded-full bg-green-400/60 animate-pulse" style={{ height: `${h}%`, animationDelay: `${i * 130}ms` }} />
                     ))}
@@ -541,30 +546,31 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
               placeholder="Tell me about yourself — your role, experience, and what brings you here..."
               value={fallbackText}
               onChange={(e) => setFallbackText(e.target.value)}
+              aria-label="Tell me about yourself"
               className="resize-none bg-white/5 border-white/10 text-white placeholder:text-white/25 focus-visible:ring-blue-500"
             />
           )}
         </div>
 
-        {error && <p className="text-xs text-red-400 text-center px-6 pb-2">{error}</p>}
+        {error && <p role="alert" className="text-xs text-red-400 text-center px-6 pb-2">{error}</p>}
 
         <div className="flex flex-wrap items-center justify-between gap-y-2 px-6 py-4 border-t border-white/10 bg-black/30">
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 min-w-24">
+            <div className="flex items-center gap-2 min-w-24" role="status" aria-live="polite">
               {sttSupported ? (
                 isListening ? (
                   <>
-                    <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" aria-hidden="true" />
                     <span className="text-green-300 text-xs font-medium">Listening</span>
                   </>
                 ) : isRecording ? (
                   <>
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse" aria-hidden="true" />
                     <span className="text-blue-300 text-xs font-medium">Recording answer</span>
                   </>
                 ) : (
                   <>
-                    <span className="w-2.5 h-2.5 rounded-full bg-gray-600" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-gray-600" aria-hidden="true" />
                     <span className="text-gray-500 text-xs">Mic off</span>
                   </>
                 )
@@ -577,6 +583,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
               size="sm"
               onClick={cycleRate}
               title="Interviewer voice speed"
+              aria-label={`Interviewer voice speed: ${rate}x. Click to change.`}
               className="text-white/60 hover:text-white hover:bg-white/10 text-xs h-8 px-2"
             >
               {rate}x
@@ -586,6 +593,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
               size="sm"
               onClick={toggleMute}
               title={muted ? "Unmute interviewer voice" : "Mute interviewer voice"}
+              aria-label={muted ? "Unmute interviewer voice" : "Mute interviewer voice"}
               className="text-white/60 hover:text-white hover:bg-white/10 text-xs h-8 px-2"
             >
               {muted ? "🔇" : "🔈"}
@@ -599,7 +607,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
           >
             {tmaySubmitting ? (
               <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true" />
                 Saving…
               </span>
             ) : "Continue →"}
@@ -618,10 +626,10 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
   if (roomState === "debrief-failed") {
     return (
       <div className="fixed inset-0 bg-gray-950 flex flex-col items-center justify-center gap-6 text-white z-50 px-6 text-center">
-        <div className="w-14 h-14 rounded-full bg-red-500/15 flex items-center justify-center">
+        <div className="w-14 h-14 rounded-full bg-red-500/15 flex items-center justify-center" aria-hidden="true">
           <span className="text-2xl">⚠️</span>
         </div>
-        <div className="space-y-2 max-w-sm">
+        <div className="space-y-2 max-w-sm" role="alert">
           <p className="text-lg font-semibold tracking-tight">Couldn&apos;t generate your debrief</p>
           <p className="text-sm text-gray-400">
             {error ?? "Something went wrong while putting your report together."}
@@ -657,7 +665,14 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       </header>
 
       {/* Thin progress bar — visual only */}
-      <div className="absolute top-0 left-0 right-0 h-0.5 bg-white/10 z-10">
+      <div
+        className="absolute top-0 left-0 right-0 h-0.5 bg-white/10 z-10"
+        role="progressbar"
+        aria-label="Interview progress"
+        aria-valuenow={progressValue}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
         <div
           className="h-full bg-blue-500 transition-all duration-700"
           style={{ width: `${progressValue}%` }}
@@ -696,41 +711,48 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
             <p className="text-xs font-semibold text-gray-400 tracking-widest uppercase">
               AI Interviewer
             </p>
-            {roomState === "loading-question" ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-500/15 text-yellow-300 text-xs font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
-                Thinking…
-              </span>
-            ) : roomState === "speaking" || isSpeaking ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/15 text-blue-300 text-xs font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                Speaking
-              </span>
-            ) : roomState === "listening" ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-500/15 text-green-300 text-xs font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                Your turn
-              </span>
-            ) : roomState === "submitting" ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-500/15 text-orange-300 text-xs font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
-                Processing
-              </span>
-            ) : null}
+            <div role="status" aria-live="polite">
+              {roomState === "loading-question" ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-500/15 text-yellow-300 text-xs font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" aria-hidden="true" />
+                  Thinking…
+                </span>
+              ) : roomState === "speaking" || isSpeaking ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/15 text-blue-300 text-xs font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" aria-hidden="true" />
+                  Speaking
+                </span>
+              ) : roomState === "listening" ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-500/15 text-green-300 text-xs font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" aria-hidden="true" />
+                  Your turn
+                </span>
+              ) : roomState === "submitting" ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-500/15 text-orange-300 text-xs font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" aria-hidden="true" />
+                  Processing
+                </span>
+              ) : null}
+            </div>
           </div>
 
           {/* Question text */}
-          {roomState === "loading-question" ? (
-            <p className="text-gray-500 text-sm animate-pulse">Preparing next question…</p>
-          ) : current ? (
-            <p className="text-xl leading-relaxed text-white/90 font-light">
-              &ldquo;{current.question}&rdquo;
-            </p>
-          ) : null}
+          <div aria-live="polite">
+            {roomState === "loading-question" ? (
+              <p className="text-gray-500 text-sm animate-pulse">Preparing next question…</p>
+            ) : current ? (
+              <p className="text-xl leading-relaxed text-white/90 font-light">
+                &ldquo;{current.question}&rdquo;
+              </p>
+            ) : null}
+          </div>
         </div>
 
-        {/* User camera — PiP corner tile */}
-        <div className="absolute bottom-4 right-4 w-32 h-24 sm:w-44 sm:h-32 rounded-2xl overflow-hidden border border-white/20 bg-gray-800 shadow-2xl">
+        {/* User camera — PiP corner tile (self-view only, no unique info for screen readers) */}
+        <div
+          className="absolute bottom-4 right-4 w-32 h-24 sm:w-44 sm:h-32 rounded-2xl overflow-hidden border border-white/20 bg-gray-800 shadow-2xl"
+          aria-hidden="true"
+        >
           {cameraAllowed === false ? (
             <div className="w-full h-full flex items-center justify-center">
               <span className="text-xs text-gray-400 text-center px-2">Camera off</span>
@@ -754,7 +776,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
           <div className="relative rounded-xl border border-white/10 bg-white/5 px-4 py-3 min-h-14 flex items-center">
             {roomState === "listening" ? (
               <div className="flex items-center gap-3 py-0.5">
-                <span className="flex items-end gap-[3px] h-4 shrink-0">
+                <span className="flex items-end gap-[3px] h-4 shrink-0" aria-hidden="true">
                   {[40, 80, 55, 90, 45].map((h, i) => (
                     <span key={i} className="w-[3px] rounded-full bg-green-400/60 animate-pulse" style={{ height: `${h}%`, animationDelay: `${i * 130}ms` }} />
                   ))}
@@ -772,13 +794,14 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
             value={fallbackText}
             onChange={(e) => setFallbackText(e.target.value)}
             disabled={roomState === "submitting"}
+            aria-label="Your answer"
             className="resize-none bg-white/5 border-white/10 text-white placeholder:text-white/25 focus-visible:ring-blue-500"
           />
         )}
       </div>
 
       {error && (
-        <p className="text-xs text-red-400 text-center px-6 pb-2">{error}</p>
+        <p role="alert" className="text-xs text-red-400 text-center px-6 pb-2">{error}</p>
       )}
 
       {/* ── Controls bar ── */}
@@ -786,21 +809,21 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
 
         {/* Mic indicator + interviewer voice controls */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 min-w-24">
+          <div className="flex items-center gap-2 min-w-24" role="status" aria-live="polite">
             {sttSupported ? (
               isListening ? (
                 <>
-                  <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" aria-hidden="true" />
                   <span className="text-green-300 text-xs font-medium">Listening</span>
                 </>
               ) : isRecording ? (
                 <>
-                  <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse" aria-hidden="true" />
                   <span className="text-blue-300 text-xs font-medium">Recording answer</span>
                 </>
               ) : (
                 <>
-                  <span className="w-2.5 h-2.5 rounded-full bg-gray-600" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-gray-600" aria-hidden="true" />
                   <span className="text-gray-500 text-xs">Mic off</span>
                 </>
               )
@@ -813,6 +836,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
             size="sm"
             onClick={cycleRate}
             title="Interviewer voice speed"
+            aria-label={`Interviewer voice speed: ${rate}x. Click to change.`}
             className="text-white/60 hover:text-white hover:bg-white/10 text-xs h-8 px-2"
           >
             {rate}x
@@ -822,6 +846,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
             size="sm"
             onClick={toggleMute}
             title={muted ? "Unmute interviewer voice" : "Mute interviewer voice"}
+            aria-label={muted ? "Unmute interviewer voice" : "Mute interviewer voice"}
             className="text-white/60 hover:text-white hover:bg-white/10 text-xs h-8 px-2"
           >
             {muted ? "🔇" : "🔈"}
@@ -836,9 +861,10 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
               size="sm"
               onClick={handleRespeak}
               disabled={isSpeaking}
+              aria-label="Replay the question audio"
               className="text-white/60 hover:text-white hover:bg-white/10 text-xs h-8"
             >
-              🔊 Replay
+              <span aria-hidden="true">🔊</span> Replay
             </Button>
           )}
 
@@ -847,9 +873,10 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
               variant="ghost"
               size="sm"
               onClick={handleRetry}
+              aria-label="Retry — re-record your answer"
               className="text-white/60 hover:text-white hover:bg-white/10 text-xs h-8"
             >
-              ↩ Retry
+              <span aria-hidden="true">↩</span> Retry
             </Button>
           )}
 
@@ -861,7 +888,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
           >
             {roomState === "submitting" ? (
               <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true" />
                 Submitting…
               </span>
             ) : (

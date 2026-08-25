@@ -173,6 +173,8 @@ export default function SetupForm() {
                 value={form.role}
                 onChange={(e) => handleChange("role", e.target.value)}
                 required
+                aria-required="true"
+                aria-describedby={error ? "form-error" : undefined}
               />
             </div>
             <div className="space-y-2">
@@ -183,6 +185,8 @@ export default function SetupForm() {
                 value={form.company}
                 onChange={(e) => handleChange("company", e.target.value)}
                 required
+                aria-required="true"
+                aria-describedby={error ? "form-error" : undefined}
               />
             </div>
           </div>
@@ -199,6 +203,8 @@ export default function SetupForm() {
                 value={form.yoe}
                 onChange={(e) => handleChange("yoe", e.target.value)}
                 required
+                aria-required="true"
+                aria-describedby={error ? "form-error" : undefined}
               />
             </div>
             <div className="space-y-2">
@@ -207,7 +213,7 @@ export default function SetupForm() {
                 value={form.round_type}
                 onValueChange={(v) => handleChange("round_type", v)}
               >
-                <SelectTrigger id="round" className="min-h-[44px]">
+                <SelectTrigger id="round" className="min-h-[44px]" aria-required="true" aria-describedby={error ? "form-error" : undefined}>
                   <SelectValue placeholder="Select round" />
                 </SelectTrigger>
                 <SelectContent>
@@ -270,19 +276,21 @@ export default function SetupForm() {
               onChange={(e) => handleResumeChange(e.target.files?.[0] ?? null)}
               className="cursor-pointer"
             />
-            {parsingResume && (
-              <p className="text-xs text-muted-foreground">Reading resume…</p>
-            )}
-            {resumeParsed && !parsingResume && (
-              <p className="text-xs text-green-600 font-medium">
-                Resume parsed ({resumeParsed.length.toLocaleString()} chars) — AI will use it to personalise questions.
-              </p>
-            )}
-            {!resumeParsed && !parsingResume && (
-              <p className="text-xs text-muted-foreground">
-                Upload your resume so the AI can ask relevant follow-ups and give personalised feedback.
-              </p>
-            )}
+            <div aria-live="polite">
+              {parsingResume && (
+                <p className="text-xs text-muted-foreground">Reading resume…</p>
+              )}
+              {resumeParsed && !parsingResume && (
+                <p className="text-xs text-green-600 font-medium">
+                  Resume parsed ({resumeParsed.length.toLocaleString()} chars) — AI will use it to personalise questions.
+                </p>
+              )}
+              {!resumeParsed && !parsingResume && (
+                <p className="text-xs text-muted-foreground">
+                  Upload your resume so the AI can ask relevant follow-ups and give personalised feedback.
+                </p>
+              )}
+            </div>
           </div>
 
           {!showFallback && (
@@ -308,13 +316,13 @@ export default function SetupForm() {
           )}
 
           {jdContent && !showFallback && (
-            <p className="text-sm text-green-600 font-medium">
+            <p className="text-sm text-green-600 font-medium" aria-live="polite">
               Job description fetched ({jdContent.length.toLocaleString()} chars)
             </p>
           )}
 
           {error && (
-            <p className="text-sm text-red-600">{error}</p>
+            <p id="form-error" role="alert" className="text-sm text-red-600">{error}</p>
           )}
 
           <Button

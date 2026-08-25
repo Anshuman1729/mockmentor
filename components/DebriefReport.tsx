@@ -253,14 +253,16 @@ function RatingDots({ rating }: { rating: number }) {
   const filled = Math.round(rating);
   return (
     <div className="flex items-center gap-1">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <span
-          key={i}
-          className={`w-2.5 h-2.5 rounded-full transition-colors ${
-            i <= filled ? "bg-gray-900" : "bg-gray-200"
-          }`}
-        />
-      ))}
+      <span className="flex items-center gap-1" aria-hidden="true">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <span
+            key={i}
+            className={`w-2.5 h-2.5 rounded-full transition-colors ${
+              i <= filled ? "bg-gray-900" : "bg-gray-200"
+            }`}
+          />
+        ))}
+      </span>
       <span className="ml-1.5 font-mono text-xs text-gray-400 tabular-nums">{rating}/5</span>
     </div>
   );
@@ -347,18 +349,18 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
         <p className="text-gray-800 leading-relaxed text-[15px]">{legacy.overall}</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <div className="space-y-2">
-            <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase">What went well</p>
+            <h2 className="text-xs font-semibold tracking-widest text-gray-400 uppercase">What went well</h2>
             <ul className="space-y-2">
               {legacy.strengths?.map((s, i) => (
-                <li key={i} className="flex gap-2 text-sm text-gray-700"><span className="text-green-500 shrink-0">✓</span>{s}</li>
+                <li key={i} className="flex gap-2 text-sm text-gray-700"><span className="text-green-500 shrink-0" aria-hidden="true">✓</span>{s}</li>
               ))}
             </ul>
           </div>
           <div className="space-y-2">
-            <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase">Where to improve</p>
+            <h2 className="text-xs font-semibold tracking-widest text-gray-400 uppercase">Where to improve</h2>
             <ul className="space-y-2">
               {legacy.gaps?.map((g, i) => (
-                <li key={i} className="flex gap-2 text-sm text-gray-700"><span className="text-red-400 shrink-0">✗</span>{g}</li>
+                <li key={i} className="flex gap-2 text-sm text-gray-700"><span className="text-red-400 shrink-0" aria-hidden="true">✗</span>{g}</li>
               ))}
             </ul>
           </div>
@@ -397,7 +399,7 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
       {/* Verdict Banner — sticky on mobile for <5s visibility */}
       <div className="rounded-xl bg-gray-950 text-white p-6 space-y-4 sticky top-2 z-30 shadow-lg">
         <div>
-          <p className="text-xs font-semibold tracking-widest text-gray-500 uppercase mb-3">Interview Outcome</p>
+          <h2 className="text-xs font-semibold tracking-widest text-gray-500 uppercase mb-3">Interview Outcome</h2>
           <span className={`inline-flex items-center px-4 py-1.5 rounded-full text-sm font-semibold border ${rStyle.bg} ${rStyle.text} ${rStyle.border}`}>
             {d.summary.recommendation}
           </span>
@@ -412,7 +414,7 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
         {buildMetrics(d.metrics).map((m) => (
           <div key={m.label} className="rounded-xl bg-white border border-gray-100 p-4 shadow-sm hover:shadow transition-shadow">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{m.label}</span>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{m.label}</h3>
               <span className={clsx("text-xs font-bold px-2 py-0.5 rounded-full", m.status === "ideal" && "bg-emerald-50 text-emerald-700", m.status === "good" && "bg-blue-50 text-blue-700", m.status === "watch" && "bg-amber-50 text-amber-700", m.status === "flag" && "bg-rose-50 text-rose-700")}>
                 {m.statusLabel}
               </span>
@@ -427,7 +429,7 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
 
       {/* 8-Signal Grid */}
       <div className="space-y-4">
-        <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase">Signal Analysis</p>
+        <h2 className="text-xs font-semibold tracking-widest text-gray-400 uppercase">Signal Analysis</h2>
         {/* Radar chart placeholder — BACKLOG #3 (requires recharts install) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {d.skill_analysis.map((skill) => {
@@ -443,9 +445,9 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
                 className={`rounded-xl border p-5 space-y-3 transition-colors ${cardAccent}`}
               >
                 <div className="space-y-2">
-                  <p className="text-[10px] font-semibold tracking-wider text-gray-500 uppercase">
+                  <h3 className="text-[10px] font-semibold tracking-wider text-gray-500 uppercase">
                     {meta?.name ?? skill.parameter_id}
-                  </p>
+                  </h3>
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <RatingDots rating={skill.rating} />
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
@@ -485,17 +487,18 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
         if (moments.length === 0) return null;
         return (
           <div className="space-y-4">
-            <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase">Key Moments</p>
+            <h2 className="text-xs font-semibold tracking-widest text-gray-400 uppercase">Key Moments</h2>
             <div className="space-y-3">
               {moments.map((m) => (
                 <div key={m.parameter_id} className="flex gap-3">
-                  <span className={`mt-1 shrink-0 text-xs font-bold ${m.positive ? "text-emerald-500" : "text-red-400"}`}>
+                  <span className={`mt-1 shrink-0 text-xs font-bold ${m.positive ? "text-emerald-500" : "text-red-400"}`} aria-hidden="true">
                     {m.positive ? "+" : "−"}
                   </span>
                   <div className="space-y-1">
-                    <p className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">
+                    <h3 className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">
+                      {m.positive ? "Strength: " : "Weak spot: "}
                       {SIGNAL_META[m.parameter_id]?.name ?? m.parameter_id}
-                    </p>
+                    </h3>
                     {m.evidence_quotes?.[0] && (
                       <p className="text-xs text-gray-400 italic">"{m.evidence_quotes[0]}"</p>
                     )}
@@ -512,10 +515,10 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
 
       {/* Behavioral Insights */}
       <div className="space-y-4">
-        <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase">Behavioral Insights</p>
+        <h2 className="text-xs font-semibold tracking-widest text-gray-400 uppercase">Behavioral Insights</h2>
         <div className="flex flex-wrap items-stretch gap-3">
           <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
-            <p className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase mb-2">STAR Adherence</p>
+            <h3 className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase mb-2">STAR Adherence</h3>
             <div className="flex items-center gap-3">
               <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                 <div
@@ -529,7 +532,7 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
             </div>
           </div>
           <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
-            <p className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase mb-2">Confidence</p>
+            <h3 className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase mb-2">Confidence</h3>
             <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
               confidenceStyle[d.behavioral_insights?.confidence_level ?? "Medium"]
             }`}>
@@ -539,11 +542,11 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
         </div>
         {d.behavioral_insights?.red_flags?.length > 0 && (
           <div className="space-y-2">
-            <p className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">Red Flags</p>
+            <h3 className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">Red Flags</h3>
             <ul className="space-y-1.5">
               {d.behavioral_insights.red_flags.map((flag, i) => (
                 <li key={i} className="flex gap-2 text-sm text-red-700">
-                  <span className="shrink-0 mt-0.5">⚠</span>
+                  <span className="shrink-0 mt-0.5" aria-hidden="true">⚠</span>
                   <span>{flag}</span>
                 </li>
               ))}
@@ -556,25 +559,25 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
 
       {/* Actionable Feedback */}
       <div className="space-y-5">
-        <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase">Actionable Feedback</p>
+        <h2 className="text-xs font-semibold tracking-widest text-gray-400 uppercase">Actionable Feedback</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <div className="space-y-3">
-            <p className="text-[10px] font-semibold tracking-wider text-emerald-600 uppercase">Strengths</p>
+            <h3 className="text-[10px] font-semibold tracking-wider text-emerald-600 uppercase">Strengths</h3>
             <ul className="space-y-2">
               {d.actionable_feedback?.strengths?.map((s, i) => (
                 <li key={i} className="flex gap-2 text-sm text-gray-700">
-                  <span className="text-emerald-500 mt-0.5 shrink-0">✓</span>
+                  <span className="text-emerald-500 mt-0.5 shrink-0" aria-hidden="true">✓</span>
                   <span>{s}</span>
                 </li>
               ))}
             </ul>
           </div>
           <div className="space-y-3">
-            <p className="text-[10px] font-semibold tracking-wider text-amber-600 uppercase">Growth Areas</p>
+            <h3 className="text-[10px] font-semibold tracking-wider text-amber-600 uppercase">Growth Areas</h3>
             <ul className="space-y-2">
               {d.actionable_feedback?.growth_areas?.map((g, i) => (
                 <li key={i} className="flex gap-2 text-sm text-gray-700">
-                  <span className="text-amber-500 mt-0.5 shrink-0">→</span>
+                  <span className="text-amber-500 mt-0.5 shrink-0" aria-hidden="true">→</span>
                   <span>{g}</span>
                 </li>
               ))}
@@ -583,7 +586,7 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
         </div>
         {d.actionable_feedback?.top_priority_fix && (
           <div className="rounded-xl border border-gray-900 bg-gray-950 px-5 py-4">
-            <p className="text-[10px] font-semibold tracking-widest text-gray-500 uppercase mb-2">Top Priority Fix</p>
+            <h3 className="text-[10px] font-semibold tracking-widest text-gray-500 uppercase mb-2">Top Priority Fix</h3>
             <p className="text-sm text-white leading-relaxed">{d.actionable_feedback.top_priority_fix}</p>
           </div>
         )}
