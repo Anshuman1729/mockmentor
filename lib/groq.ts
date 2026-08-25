@@ -183,7 +183,13 @@ Output ONLY the next interview question. No preamble, no labels, no explanation.
 
   const completion = await getClient().chat.completions.create({
     model: MODEL,
-    max_tokens: 220,
+    max_tokens: 320,
+    // openai/gpt-oss-120b defaults to 'medium' reasoning effort, which burns
+    // hidden reasoning tokens out of the same max_tokens budget before ever
+    // emitting the visible answer — a low-complexity task like "write one
+    // interview question" doesn't need that, and at a tight token budget it
+    // can consume the whole budget and return an empty completion.
+    reasoning_effort: "low",
     messages: [
       { role: "system", content: systemPrompt },
       {
@@ -230,7 +236,11 @@ Q: "Your distributed training job is experiencing gradient staleness with async 
 
   const completion = await getClient().chat.completions.create({
     model: MODEL,
-    max_tokens: 220,
+    max_tokens: 320,
+    // See generateNextQuestion — gpt-oss-120b's default 'medium' reasoning
+    // effort can otherwise consume the whole token budget before emitting
+    // any visible answer.
+    reasoning_effort: "low",
     messages: [
       {
         role: "system",

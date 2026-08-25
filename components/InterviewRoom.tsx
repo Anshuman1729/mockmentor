@@ -274,7 +274,17 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
         setSessionInfo(s);
         if (!s.background) {
           setRoomState("tmay");
-          await speak("Before we begin, tell me a bit about yourself — your current role, key experience, and what you're looking to achieve.");
+          // A TTS failure here must stay a TMAY-step problem, not escape to
+          // the outer catch below — that catch is for session-load failures
+          // and calls fetchNextQuestion(), which would silently skip the
+          // TMAY step (and lose the background-collection step) instead of
+          // just failing to voice the intro prompt.
+          try {
+            await speak("Before we begin, tell me a bit about yourself — your current role, key experience, and what you're looking to achieve.");
+          } catch (speakErr) {
+            console.error("[TTS] speak failed on TMAY intro:", speakErr);
+            if (!cancelled) setError("Voice playback failed — read the prompt below, then answer when ready.");
+          }
           if (cancelled) return;
           startSTT();
           await startRecording();
@@ -441,7 +451,15 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     stopSTT();
     discardRecording();
     setRoomState("speaking");
-    await speak(current.question);
+    // Same reasoning as fetchNextQuestion: a TTS failure here must not leave
+    // the room stuck on "speaking" forever — always fall through to
+    // listening so the user isn't stranded with a frozen UI and no recovery.
+    try {
+      await speak(current.question);
+    } catch (speakErr) {
+      console.error("[TTS] speak failed on replay:", speakErr);
+      setError("Voice playback failed — read the question below, or tap 🔊 Replay to try again.");
+    }
     setRoomState("listening");
     startSTT();
     await startRecording();

@@ -123,46 +123,43 @@ export async function POST(req: NextRequest) {
     }
 
     // If no seed found AND user has a domain → use domain-specific generation
-    let question: string;
-    if (!seed && session.domain) {
-      question = await generateDomainQuestion(
-        {
-          role: session.role,
-          company: session.company,
-          yoe: session.yoe,
-          round_type: normalizedRound,
-          jd_content: session.jd_content,
-          background: session.background,
-          company_stage: session.company_stage,
-          domain: session.domain,
-          total_questions: totalQuestions,
-        },
-        qas.map((qa) => ({
-          question_number: qa.question_number,
-          question: qa.question,
-          answer: qa.answer,
-        }))
-      );
-    } else {
-      question = await generateNextQuestion(
-        {
-          role: session.role,
-          company: session.company,
-          yoe: session.yoe,
-          round_type: normalizedRound,
-          jd_content: session.jd_content,
-          background: session.background,
-          company_stage: session.company_stage,
-          domain: session.domain,
-          total_questions: totalQuestions,
-        },
-        qas.map((qa) => ({
-          question_number: qa.question_number,
-          question: qa.question,
-          answer: qa.answer,
-        })),
-        seed ?? undefined
-      );
+    const sessionContext = {
+      role: session.role,
+      company: session.company,
+      yoe: session.yoe,
+      round_type: normalizedRound,
+      jd_content: session.jd_content,
+      background: session.background,
+      company_stage: session.company_stage,
+      domain: session.domain,
+      total_questions: totalQuestions,
+    };
+    const qaHistoryForGen = qas.map((qa) => ({
+      question_number: qa.question_number,
+      question: qa.question,
+      answer: qa.answer,
+    }));
+
+    async function generate(): Promise<string> {
+      if (!seed && session.domain) {
+        return generateDomainQuestion(sessionContext, qaHistoryForGen);
+      }
+      return generateNextQuestion(sessionContext, qaHistoryForGen, seed ?? undefined);
+    }
+
+    // The model occasionally returns an empty completion (e.g. a reasoning
+    // model burning its whole token budget on hidden reasoning before ever
+    // emitting the answer). Retry once rather than silently persisting and
+    // serving blank question text — an empty "success" is worse than a
+    // clear failure the client already knows how to retry.
+    let question = (await generate()).trim();
+    if (!question) {
+      console.warn("[question] empty completion, retrying once", { sessionId, round: normalizedRound });
+      question = (await generate()).trim();
+    }
+    if (!question) {
+      console.error("[question] empty completion after retry", { sessionId, round: normalizedRound });
+      return NextResponse.json({ error: "Failed to generate a question — please try again." }, { status: 502 });
     }
 
     const nextNumber = qas.length + 1;
