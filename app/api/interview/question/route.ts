@@ -140,8 +140,15 @@ export async function POST(req: NextRequest) {
       answer: qa.answer,
     }));
 
+    // generateDomainQuestion() has no HR/behavioral awareness — it always asks
+    // deep-expertise technical questions regardless of round type. It must
+    // only be used for technical-style rounds (the same technical/behavioural
+    // split already used for seed matching above), or an HR screen / behavioral
+    // round gets senior-level technical questions it explicitly should never ask.
+    const isTechnicalRound = seedRoundType(normalizedRound) === "technical";
+
     async function generate(): Promise<string> {
-      if (!seed && session.domain) {
+      if (!seed && session.domain && isTechnicalRound) {
         return generateDomainQuestion(sessionContext, qaHistoryForGen);
       }
       return generateNextQuestion(sessionContext, qaHistoryForGen, seed ?? undefined);
@@ -170,9 +177,12 @@ export async function POST(req: NextRequest) {
       RETURNING id
     `;
 
-    // Auto-cache: if domain-generated (no seed + has domain), store in question_bank
-    // for future candidates. Fire-and-forget — do not await.
-    if (!seed && session.domain) {
+    // Auto-cache: if actually domain-generated (no seed + has domain + technical
+    // round — same gate as generate() above), store in question_bank for future
+    // candidates. Fire-and-forget — do not await. Must match the generate() gate
+    // exactly, or an HR/behavioral question (generated via generateNextQuestion)
+    // would get miscategorized as a technical domain seed for future sessions.
+    if (!seed && session.domain && isTechnicalRound) {
       sql`
         INSERT INTO question_bank (company_id, question_text, round_type, domain, expected_signals, difficulty, tags, ideal_keywords)
         VALUES ('generic', ${question}, ${session.round_type}, ARRAY[${domainSlug}], '{}', 3, '{}', '{}')

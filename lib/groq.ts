@@ -177,7 +177,7 @@ ${difficultyInstruction}
 
 ${questionInstruction}
 ${seedSection}
-Ask exactly ONE question. Do not list multiple questions, do not use bullet points or numbered sub-parts, and do not stack several "and also..." clauses onto one ask. If there are several angles worth exploring, pick the single most important one now — you'll get another turn to follow up based on their answer.
+Ask exactly ONE question, and make it a single, self-contained ask — not several requirements stacked into one sentence via commas or "and" (e.g. don't ask for a design AND the implementation details AND the tradeoffs AND the failure handling all at once — that's four questions wearing one question mark). No bullet points, no numbered sub-parts. If there are several angles worth exploring, pick the single most important one now — you'll get another turn to follow up based on their answer.
 
 Output ONLY the next interview question. No preamble, no labels, no explanation.`;
 
@@ -204,7 +204,10 @@ Output ONLY the next interview question. No preamble, no labels, no explanation.
 
 /**
  * Generate a domain-specific question when no seed exists for the user's domain.
- * Called only when: seed === null AND session.domain is set.
+ * Called only when: seed === null AND session.domain is set AND the round is
+ * a technical-style round (the caller gates this — see seedRoundType() in the
+ * question route). This function has no HR/behavioral awareness of its own,
+ * so it must never be reached for an HR screen or behavioral round.
  */
 export async function generateDomainQuestion(
   session: SessionContext,
@@ -224,14 +227,19 @@ export async function generateDomainQuestion(
     ? `\n[COMPANY CONTEXT]\n- Company stage: ${session.company_stage}\n- Seed/Series A companies prize ownership + breadth; Series B/Public companies prize depth + scalability.\n`
     : "";
 
+  const difficultyInstruction = buildDifficultyInstruction(session.yoe);
+
   const fewShotExamples = `
-[FEW-SHOT EXAMPLES — domain-specific depth]
+[FEW-SHOT EXAMPLES — for STYLE only: specific and scenario-grounded, not generic textbook trivia. NOT for required difficulty — these happen to be senior-level; scale actual complexity to the YOE guidance above, not to these examples.]
 
-Example 1 (Embedded/BMS, Technical):
-Q: "Walk me through how you'd design a State of Charge estimation algorithm for a lithium-ion battery pack. What are the tradeoffs between Coulomb counting and Extended Kalman Filter approaches, and when would you choose each?"
+Example 1 (Embedded/BMS, senior-level):
+Q: "Walk me through how you'd design a State of Charge estimation algorithm for a lithium-ion battery pack. What are the tradeoffs between Coulomb counting and Extended Kalman Filter approaches?"
 
-Example 2 (ML Infra, Technical):
-Q: "Your distributed training job is experiencing gradient staleness with async SGD across 64 GPUs. How do you diagnose whether this is a network bottleneck vs compute imbalance, and what architectural changes would you make?"
+Example 2 (ML Infra, senior-level):
+Q: "Your distributed training job is experiencing gradient staleness with async SGD across 64 GPUs. How do you diagnose whether this is a network bottleneck vs compute imbalance?"
+
+Example 3 (same ML Infra domain, junior-level — same specificity, far lower complexity):
+Q: "You're training a small model and notice the loss isn't decreasing after a few epochs. What's the first thing you'd check?"
 `;
 
   const completion = await getClient().chat.completions.create({
@@ -246,12 +254,14 @@ Q: "Your distributed training job is experiencing gradient staleness with async 
         role: "system",
         content: `You are a senior ${domain} technical interviewer conducting a ${session.round_type} interview at ${session.company}.
 
+--- DIFFICULTY (this governs complexity, not the examples below) ---
+${difficultyInstruction}
+
 ${fewShotExamples}
 ${companyContextBlock}
 RULES:
-- Ask exactly ONE question. No preamble, no bullet points, no numbered sub-parts, no stacked "and also..." clauses.
-- Questions must require deep ${domain} expertise — a generic backend interviewer should not know to ask this.
-- Adapt depth to YOE: ${session.yoe} years of experience.
+- Ask exactly ONE question, and make it a single, self-contained ask — not several requirements stacked into one sentence via commas or "and" (e.g. don't ask for a design AND the data pipeline AND the statistical method AND the guardrails all at once). No preamble, no bullet points, no numbered sub-parts.
+- Questions must require deep ${domain} expertise — a generic backend interviewer should not know to ask this — but expertise depth and question complexity are two different things: match complexity to the YOE guidance above.
 - Do not repeat topics from previous Q&As.${session.jd_content ? `\n- Stay relevant to the JD: ${session.jd_content.slice(0, 800)}` : ""}${session.background ? `\n- Tailor to candidate background: ${session.background.slice(0, 500)}` : ""}`,
       },
       {
