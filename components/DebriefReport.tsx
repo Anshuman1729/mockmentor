@@ -63,7 +63,8 @@ interface LegacyDebrief {
   closing: string;
 }
 
-type Debrief = NewDebrief | LegacyDebrief;
+export type Debrief = NewDebrief | LegacyDebrief;
+export type { NewDebrief };
 
 interface SessionData {
   session: {

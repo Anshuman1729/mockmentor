@@ -1,4 +1,4 @@
-import { DebriefReportView } from "@/components/DebriefReport";
+import { DebriefReportView, type NewDebrief } from "@/components/DebriefReport";
 
 // Dev-only, DB-free preview of the new debrief report design — realistic
 // mock data matching the current DebriefReport schema (lib/groq.ts), so the
@@ -177,14 +177,97 @@ const MOCK_DEBRIEF = {
   },
 };
 
-export default function DebriefPreview() {
+// ---- Strong Hire scenario — every signal rated 4-5, so model_answers and
+// the per-card framework callouts should both be empty. Checks that those
+// sections degrade to "nothing rendered" instead of an empty box/heading.
+const STRONG_HIRE_DEBRIEF = {
+  ...MOCK_DEBRIEF,
+  summary: {
+    recommendation: "Strong Hire" as const,
+    hire_probability: 91,
+    overall_impression:
+      "Consistently exceptional across every signal — SME-level technical depth, quantified results in nearly every answer, and proactive ownership without being asked. This is one of the strongest transcripts in the sample.",
+  },
+  skill_analysis: MOCK_DEBRIEF.skill_analysis.map((s) => ({
+    ...s,
+    rating: 5,
+    reasoning: s.reasoning.replace(/\.$/, "") + " — consistently the strongest possible version of this signal throughout the session.",
+  })),
+  question_walkthrough: MOCK_DEBRIEF.question_walkthrough.map((q) => ({
+    ...q,
+    key_takeaway: q.key_takeaway,
+  })),
+  model_answers: [],
+  behavioral_insights: {
+    star_adherence_score: 96,
+    confidence_level: "High" as const,
+    red_flags: [],
+  },
+};
+
+// ---- No Hire scenario — most signals rated 1-2, to check that many
+// stacked framework + model-answer callouts don't break card spacing.
+const NO_HIRE_DEBRIEF = {
+  ...MOCK_DEBRIEF,
+  summary: {
+    recommendation: "No Hire" as const,
+    hire_probability: 22,
+    overall_impression:
+      "Struggled to go beyond surface-level answers across almost every question. Technical claims were frequently vague or unverifiable, and several answers had no clear outcome. This session would not clear a technical screen at most companies.",
+  },
+  skill_analysis: MOCK_DEBRIEF.skill_analysis.map((s, i) => ({
+    ...s,
+    rating: i % 3 === 0 ? 3 : 1,
+  })),
+  model_answers: [
+    ...MOCK_DEBRIEF.model_answers,
+    {
+      question_number: 3,
+      parameter_id: "STAR_ALIGNMENT",
+      framework: "STAR",
+      model_excerpt:
+        "Situation: our checkout error rate spiked to 4% after a deploy. Task: I was on-call and owned triage. Action: I bisected the last three deploys, found the culprit in a payment-retry change, and rolled it back within 12 minutes. Result: error rate returned to baseline (0.2%) and we shipped a fixed version with a regression test the next day.",
+    },
+    {
+      question_number: 5,
+      parameter_id: "RESULT_ORIENTATION",
+      framework: "Situation → Complication → Resolution → Impact",
+      model_excerpt:
+        "The queue was backing up during peak hours. I added backpressure and horizontal scaling triggers on queue depth, which cut peak processing lag from 40 minutes to under 3.",
+    },
+  ],
+  behavioral_insights: {
+    star_adherence_score: 24,
+    confidence_level: "Low" as const,
+    red_flags: [
+      "No quantified outcome in 4 of 5 answers",
+      "Could not explain a core technology choice when probed",
+      "Never proactively raised a failure mode or edge case",
+    ],
+  },
+};
+
+const SCENARIOS: Record<string, NewDebrief> = {
+  borderline: MOCK_DEBRIEF,
+  strong: STRONG_HIRE_DEBRIEF,
+  nohire: NO_HIRE_DEBRIEF,
+};
+
+export default async function DebriefPreview({
+  searchParams,
+}: {
+  searchParams: Promise<{ scenario?: string }>;
+}) {
+  const { scenario } = await searchParams;
+  const debrief = SCENARIOS[scenario ?? "borderline"] ?? MOCK_DEBRIEF;
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-center text-xs text-amber-700 font-medium">
-        dev preview — /dev/debrief — mock data, no DB or LLM call
+        dev preview — /dev/debrief — mock data, no DB or LLM call — try ?scenario=strong or ?scenario=nohire
       </div>
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10">
-        <DebriefReportView session={MOCK_SESSION} debrief={MOCK_DEBRIEF} />
+        <DebriefReportView session={MOCK_SESSION} debrief={debrief} />
       </div>
     </div>
   );
