@@ -83,15 +83,20 @@ function isNewDebrief(d: Debrief): d is NewDebrief {
   return "skill_analysis" in d && Array.isArray((d as NewDebrief).skill_analysis);
 }
 
-const SIGNAL_META: Record<string, { name: string; bars: [string, string, string] }> = {
-  TECHNICAL_DEPTH:     { name: "Technical Depth",       bars: ["Unsatisfactory", "Proficient", "Exceptional"]     },
-  PROBLEM_SOLVING:     { name: "Problem Solving",        bars: ["Rigid", "Adaptive", "Strategic"]                 },
-  STAR_ALIGNMENT:      { name: "STAR Alignment",         bars: ["Disorganized", "Structured", "Highly Structured"] },
-  COMMUNICATION_SNR:   { name: "Communication SNR",      bars: ["Vague/Wordy", "Direct", "Concise"]               },
-  RESULT_ORIENTATION:  { name: "Result Orientation",     bars: ["Input-focused", "Output-focused", "Impact-focused"]},
-  OWNERSHIP_ETHICS:    { name: "Ownership & Initiative", bars: ["Passive", "Reliable", "Proactive"]               },
-  ADAPTABILITY_GROWTH: { name: "Adaptability",           bars: ["Resistant", "Receptive", "Growth-focused"]       },
-  EDGE_CASE_MASTERY:   { name: "Edge Case Awareness",    bars: ["Surface-level", "Aware", "Preemptive"]           },
+// `blurb` is a plain-English one-liner shown on every card regardless of
+// rating — without it, a signal that scores well never explains what it
+// even measured, which reads as jargon (STAR, SNR) to anyone who didn't
+// already know the term going in. The `bars` labels stay short since they
+// only ever appear next to a rating, with context already established.
+const SIGNAL_META: Record<string, { name: string; blurb: string; bars: [string, string, string] }> = {
+  TECHNICAL_DEPTH:     { name: "Technical Depth",       blurb: "How deep your technical explanations went — not just naming tools, but explaining how and why.",              bars: ["Unsatisfactory", "Proficient", "Exceptional"]      },
+  PROBLEM_SOLVING:     { name: "Problem Solving",        blurb: "How you handled ambiguity and worked through a problem you hadn't seen before.",                              bars: ["Rigid", "Adaptive", "Strategic"]                   },
+  STAR_ALIGNMENT:      { name: "Story Structure (STAR)", blurb: "Whether your stories followed Situation → Task → Action → Result, ending in a real outcome.",                  bars: ["Disorganized", "Structured", "Highly Structured"]  },
+  COMMUNICATION_SNR:   { name: "Communication Clarity",  blurb: "How much of what you said was substance vs. filler — answer-first and concise, or padded and roundabout.",    bars: ["Vague/Wordy", "Direct", "Concise"]                 },
+  RESULT_ORIENTATION:  { name: "Result Orientation",     blurb: "Whether you closed answers with a measurable outcome, not just a description of what you did.",               bars: ["Input-focused", "Output-focused", "Impact-focused"]},
+  OWNERSHIP_ETHICS:    { name: "Ownership & Initiative", blurb: "Whether you took initiative and owned outcomes — good and bad — without being asked.",                        bars: ["Passive", "Reliable", "Proactive"]                 },
+  ADAPTABILITY_GROWTH: { name: "Adaptability",           blurb: "How you responded to hints, pushback, or feedback in the moment.",                                            bars: ["Resistant", "Receptive", "Growth-focused"]         },
+  EDGE_CASE_MASTERY:   { name: "Edge Case Awareness",    blurb: "Whether you proactively named risks and failure modes, or only when asked.",                                  bars: ["Surface-level", "Aware", "Preemptive"]             },
 };
 
 // ---- Metric helpers ----
@@ -443,8 +448,12 @@ export function DebriefReportView({
         </div>
       </div>
 
-      {/* Verdict Banner — sticky on mobile for <5s visibility */}
-      <div className="rounded-xl bg-gray-950 text-white p-6 space-y-4 sticky top-2 z-30 shadow-lg">
+      {/* Verdict Banner — deliberately NOT sticky: a `sticky` element here has
+          no bounded parent height, so it pins to the top of the viewport for
+          the entire scroll of the report and permanently covers whatever's
+          underneath (confirmed via persona review, both desktop and mobile —
+          this was a real, severe bug, not a style nit). */}
+      <div className="rounded-xl bg-gray-950 text-white p-6 space-y-4 shadow-lg">
         <div>
           <h2 className="text-xs font-semibold tracking-widest text-gray-500 uppercase mb-3">Interview Outcome</h2>
           <span className={`inline-flex items-center px-4 py-1.5 rounded-full text-sm font-semibold border ${rStyle.bg} ${rStyle.text} ${rStyle.border}`}>
@@ -552,9 +561,12 @@ export function DebriefReportView({
                 className={`rounded-xl border border-gray-100 border-l-4 p-5 space-y-3 ${accent}`}
               >
                 <div className="space-y-2">
-                  <h3 className="text-[10px] font-semibold tracking-wider text-gray-500 uppercase">
-                    {meta?.name ?? skill.parameter_id}
-                  </h3>
+                  <div>
+                    <h3 className="text-[10px] font-semibold tracking-wider text-gray-500 uppercase">
+                      {meta?.name ?? skill.parameter_id}
+                    </h3>
+                    {meta?.blurb && <p className="text-xs text-gray-400 mt-0.5">{meta.blurb}</p>}
+                  </div>
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <RatingDots rating={skill.rating} />
                     <span className={clsx("text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0",
@@ -626,27 +638,29 @@ export function DebriefReportView({
       <div className="space-y-6">
         <SectionHeading n="05" title="Behavioral Insights" />
         <div className="flex flex-wrap items-stretch gap-3">
-          <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
-            <h3 className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase mb-2">STAR Adherence</h3>
-            <div className="flex items-center gap-3">
-              <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+          <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 max-w-xs">
+            <h3 className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase mb-2">Story Structure Score</h3>
+            <div className="flex items-center gap-3 mb-1.5">
+              <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden shrink-0">
                 <div
                   className="h-full bg-gray-900 rounded-full transition-all"
                   style={{ width: `${d.behavioral_insights?.star_adherence_score ?? 0}%` }}
                 />
               </div>
               <span className="font-mono text-sm font-semibold text-gray-900 tabular-nums">
-                {d.behavioral_insights?.star_adherence_score ?? "—"}
+                {d.behavioral_insights?.star_adherence_score ?? "—"}<span className="text-gray-400 font-normal">/100</span>
               </span>
             </div>
+            <p className="text-xs text-gray-400 leading-snug">How consistently your stories followed Situation → Task → Action → Result across the whole session.</p>
           </div>
-          <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+          <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 max-w-xs">
             <h3 className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase mb-2">Confidence</h3>
-            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+            <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full mb-1.5 ${
               confidenceStyle[d.behavioral_insights?.confidence_level ?? "Medium"]
             }`}>
               {d.behavioral_insights?.confidence_level ?? "—"}
             </span>
+            <p className="text-xs text-gray-400 leading-snug">How sure this read is, based on how consistent you were across answers.</p>
           </div>
         </div>
         {d.behavioral_insights?.red_flags?.length > 0 && (
