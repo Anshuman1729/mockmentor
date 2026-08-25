@@ -5,6 +5,36 @@
 
 ---
 
+## ✅ Done (Overnight session — `feat/phase2-2.5`, debrief/UI redesign)
+
+Worked autonomously per user direction from the end of the previous session's brainstorm
+(`docs/session-handoff-2026-08-26.md`, Findings #1-5). Verified via `tsc`/`eslint`/`vitest`
+after every change, plus persona-based review agents (4 total, across senior-engineer,
+career-switcher, new-grad, and PM personas) actually browsing the rendered pages via
+Playwright and reporting back real UX friction — not just self-review.
+
+| Task | Notes |
+|---|---|
+| **Finding #1 — render the already-built MetricCard** | Was fully built (`what`/`why`/`bench`/`yours` per metric) but the live render only showed a stripped inline version. Swapped in. |
+| **Finding #2 — question walkthrough** | New `question_walkthrough` field on `DebriefReport` (`lib/groq.ts`) — one entry per answered question, each stating what happened AND its hire-decision implication. Rendered as a numbered timeline, first content section after the verdict. |
+| **Finding #3 — implication, not just observation** | `generateDebrief` system prompt now requires every `skill_analysis[].reasoning` to state the interview consequence, not just describe behavior. |
+| **Finding #4 — deterministic frameworks** | New `SIGNAL_FRAMEWORKS` table in `lib/rubric-researched.ts` (same "deterministic where possible" philosophy as `hire_probability`) — one framework + steps per signal, surfaced on any rating ≤3. |
+| **Finding #5 — model answers** | New `model_answers` field — 1-2 entries for the weakest signal(s), each a concrete rewritten answer grounded in the actual question asked (reuses the transcript context `generateDebrief` already had). |
+| **Debrief visual redesign** | Restrained emerald/amber/red/gray palette replacing the blue-heavy generic-SaaS look; numbered section headings; every signal card explains itself via a plain-English blurb regardless of score (jargon like STAR/SNR was previously unexplained on high-scoring cards). |
+| **Fixed: permanently-stuck verdict banner** | `position: sticky` with no bounded parent height pinned the black "Interview Outcome" card over all content for the entire scroll, both mobile and desktop. Caught independently by two persona reviews before a real user would have. Removed. |
+| **Fixed: double navbar on homepage** | Root layout's generic header was rendering on top of the homepage's own custom nav. Split into a bare root layout + `(app)` route-group layout for dashboard/debrief/interview/sign-in/sign-up. |
+| **Fixed: SessionHistory badge contrast + "Hire" mis-colored** | `RecommendationBadge` used dark-mode text colors on a white card (illegible), and any non-"Strong Hire"/non-"Borderline" result — including plain "Hire" — fell through to the red/danger badge. |
+| **Above-the-fold summary** | A "Bottom line" line in the verdict banner + a quick-nav anchor row, so a first-time reader has something to act on before scrolling a long report (flagged by PM-persona review). |
+| **`/dev/debrief` mock preview** | New DB-free preview route (`?scenario=strong` / `?scenario=nohire` variants) mirroring the `/dev/loading` pattern — lets the whole redesign be visually verified without a live database or LLM call. |
+| **`DebriefLoadingScreen` deduplication** | Was byte-identical in `InterviewRoom.tsx` and `/dev/loading` — extracted to `components/DebriefLoadingScreen.tsx` so the two can't drift. |
+
+### Still open from this pass
+- **#10/#11 UI surfacing** — `answer_duration_sec` and `candidate_questions_asked` are collected but still not rendered in the conversational metrics cards. Real, scoped, not done tonight.
+- **Sarvam STT realtime WebSocket** — deliberately not attempted (see previous handoff); needs a human present to decide browser-direct-vs-proxied architecture and test against a real key.
+- Dashboard/`SetupForm` got a lighter consistency pass (dropped the generic blue "AI Setup" pill, matched card styling to the homepage) but wasn't redesigned as deeply as the debrief — the highest-leverage surface for now was the debrief per explicit user feedback.
+
+---
+
 ## ✅ Done (Session — 2026-03-06, Landing Page)
 
 | Task | Notes |

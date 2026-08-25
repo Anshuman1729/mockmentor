@@ -104,6 +104,22 @@ npm run test:coverage        # vitest with coverage
 | Shareable debrief card | ⬛ Not started |
 | PhonePe payment | ⬛ Not started |
 
+### Debrief/UI Redesign (overnight session on `feat/phase2-2.5`)
+| Item | Status |
+|---|---|
+| MetricCard (What/Benchmark/Yours) actually rendered | ✅ Done — was fully built but never wired in |
+| Question-by-question walkthrough (`question_walkthrough`) | ✅ Done — new `DebriefReport` field, one entry per answered question |
+| Deterministic framework-per-signal (`SIGNAL_FRAMEWORKS` in `lib/rubric-researched.ts`) | ✅ Done — surfaced on any signal rated ≤3 |
+| Model answer excerpts (`model_answers`) grounded in the actual question | ✅ Done — 1-2 entries, weakest signal(s) only |
+| `skill_analysis[].reasoning` states hire-decision implication, not just behavior | ✅ Done — prompt requirement in `lib/groq.ts` |
+| Every signal explains itself regardless of score (`SIGNAL_META.blurb`) | ✅ Done — jargon (STAR/SNR) no longer unexplained on high scores |
+| Fixed double-navbar (homepage nav + generic shared header both rendering) | ✅ Done — root layout split into bare shell + `(app)` route-group layout |
+| Fixed dark-mode badge colors on light `SessionHistory` cards (also: "Hire" fell through to the red badge) | ✅ Done |
+| Fixed verdict banner permanently stuck via unbounded `sticky` (covered content for the entire scroll, both mobile and desktop) | ✅ Done — found via persona review, was a real severe bug |
+| Above-the-fold summary (bottom-line fix + quick nav) so a long report isn't "nothing to grab onto" before scrolling | ✅ Done |
+| `/dev/debrief` mock preview (+ `?scenario=strong` / `?scenario=nohire`) for DB-free visual QA | ✅ Done |
+| Longest-monologue / candidate-question-rate surfaced in metrics cards (Backlog #10/#11 — data already collected, not yet rendered) | ⬛ Not done this session — real gap, next up |
+
 ### Intelligence DB (`feat/intelligence-db-fatal-flag`)
 | Item | Status |
 |---|---|
