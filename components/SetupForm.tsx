@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ShieldCheck, Sparkles, ArrowRight } from "lucide-react";
 import JDFallback from "./JDFallback";
 
 const COMPANY_STAGES = ["Seed", "Series A", "Series B", "Public"];
@@ -149,7 +150,12 @@ export default function SetupForm() {
 
   return (
     <Card className="w-full max-w-xl shadow-lg">
-      <CardHeader>
+      <CardHeader className="pb-4">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold uppercase tracking-wide">
+            <Sparkles className="w-3 h-3" /> AI Setup
+          </span>
+        </div>
         <CardTitle className="text-2xl">Start Your Mock Interview</CardTitle>
         <CardDescription>
           Fill in your details and we&apos;ll run a personalized mock
@@ -201,7 +207,7 @@ export default function SetupForm() {
                 value={form.round_type}
                 onValueChange={(v) => handleChange("round_type", v)}
               >
-                <SelectTrigger id="round">
+                <SelectTrigger id="round" className="min-h-[44px]">
                   <SelectValue placeholder="Select round" />
                 </SelectTrigger>
                 <SelectContent>
@@ -313,7 +319,7 @@ export default function SetupForm() {
 
           <Button
             type="submit"
-            className="w-full"
+            className="w-full h-[44px]"
             disabled={fetchingJD || submitting}
           >
             {fetchingJD

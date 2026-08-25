@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { clsx, type ClassValue } from "clsx";
 
 // ---- Types ----
 
@@ -393,8 +394,8 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
         </div>
       </div>
 
-      {/* Verdict Banner */}
-      <div className="rounded-xl bg-gray-950 text-white p-6 space-y-4">
+      {/* Verdict Banner — sticky on mobile for <5s visibility */}
+      <div className="rounded-xl bg-gray-950 text-white p-6 space-y-4 sticky top-2 z-30 shadow-lg">
         <div>
           <p className="text-xs font-semibold tracking-widest text-gray-500 uppercase mb-3">Interview Outcome</p>
           <span className={`inline-flex items-center px-4 py-1.5 rounded-full text-sm font-semibold border ${rStyle.bg} ${rStyle.text} ${rStyle.border}`}>
@@ -406,14 +407,20 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
         </p>
       </div>
 
-      {/* Conversational Metrics */}
-      <div className="space-y-3">
-        <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase">Conversational Metrics</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {buildMetrics(d.metrics).map((m) => (
-            <MetricCard key={m.label} m={m} />
-          ))}
-        </div>
+      {/* Metrics cards — responsive 2-col grid with visible status */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {buildMetrics(d.metrics).map((m) => (
+          <div key={m.label} className="rounded-xl bg-white border border-gray-100 p-4 shadow-sm hover:shadow transition-shadow">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{m.label}</span>
+              <span className={clsx("text-xs font-bold px-2 py-0.5 rounded-full", m.status === "ideal" && "bg-emerald-50 text-emerald-700", m.status === "good" && "bg-blue-50 text-blue-700", m.status === "watch" && "bg-amber-50 text-amber-700", m.status === "flag" && "bg-rose-50 text-rose-700")}>
+                {m.statusLabel}
+              </span>
+            </div>
+            <p className="text-2xl font-extrabold text-gray-900">{m.value}</p>
+            <p className="text-xs text-gray-500 mt-1 leading-relaxed">{m.what}</p>
+          </div>
+        ))}
       </div>
 
       <hr className="border-gray-100" />

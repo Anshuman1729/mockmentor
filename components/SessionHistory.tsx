@@ -112,7 +112,7 @@ export default function SessionHistory() {
                 </span>
               </div>
             </div>
-            <Button asChild variant="ghost" size="sm" className="shrink-0 gap-1">
+            <Button asChild variant="ghost" size="sm" className="shrink-0 gap-1 h-[44px]">
               <Link href={`/debrief/${s.id}`}>
                 {s.hire_recommendation ? "View Debrief" : "Resume"}
                 <ArrowRight className="w-3 h-3" />

@@ -7,6 +7,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useTTS } from "@/hooks/useTTS";
 import { useSTT } from "@/hooks/useSTT";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
+import { Mic, MicOff, Settings, ChevronRight, CheckCircle2 } from "lucide-react";
+import { clsx } from "clsx";
 
 type RoomState =
   | "init"
@@ -556,7 +558,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
             size="sm"
             onClick={handleTmaySubmit}
             disabled={tmaySubmitting || isSpeaking}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white px-6 h-8"
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white px-6 h-[44px] min-w-[100px]"
           >
             {tmaySubmitting ? (
               <span className="flex items-center gap-1.5">
@@ -577,9 +579,24 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
 
   // ── Room ─────────────────────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 bg-gray-950 flex flex-col text-white z-50 select-none">
+    <div className="fixed inset-0 bg-gradient-to-b from-gray-950 via-gray-900 to-gray-950 flex flex-col text-white z-50 select-none">
+      {/* Responsive top header — visible on all viewports */}
+      <header className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-white/10 bg-white/5 backdrop-blur">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
+            <Mic className="w-4 h-4 text-white" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold truncate">{sessionInfo?.role ?? "Mock Interview"}</p>
+            <p className="text-[11px] text-gray-400 truncate">{sessionInfo?.company ?? ""} · {sessionInfo?.round_type ?? ""}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-gray-400 flex-shrink-0">
+          <span className="px-2 py-0.5 rounded-full bg-white/10">{current?.questionNumber ?? 0}/{current?.total ?? 0}</span>
+        </div>
+      </header>
 
-      {/* Thin progress bar — no numbers, just visual progress */}
+      {/* Thin progress bar — visual only */}
       <div className="absolute top-0 left-0 right-0 h-0.5 bg-white/10 z-10">
         <div
           className="h-full bg-blue-500 transition-all duration-700"
@@ -792,7 +809,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
             size="sm"
             onClick={handleSubmit}
             disabled={roomState === "submitting" || !canSubmit}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white px-6 h-8"
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white px-6 h-[44px] min-w-[100px]"
           >
             {roomState === "submitting" ? (
               <span className="flex items-center gap-1.5">

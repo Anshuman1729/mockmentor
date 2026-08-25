@@ -30,7 +30,7 @@ export default async function LandingPage() {
             <Button
               asChild
               size="lg"
-              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white h-[44px] min-w-[160px]"
             >
               <Link href="/dashboard">
                 Go to Dashboard
@@ -42,7 +42,7 @@ export default async function LandingPage() {
               <Button
                 asChild
                 size="lg"
-                className="bg-blue-600 hover:bg-blue-700 text-white"
+                className="bg-blue-600 hover:bg-blue-700 text-white h-[44px] min-w-[160px]"
               >
                 <Link href="/sign-up">Start Free Mock Interview →</Link>
               </Button>
