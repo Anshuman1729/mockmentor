@@ -62,7 +62,7 @@ function DebriefLoadingScreen() {
   const msg = DEBRIEF_MESSAGES[idx];
 
   return (
-    <div className="fixed inset-0 bg-gray-950 flex flex-col items-center justify-center gap-8 text-white z-50 px-6">
+    <div className="fixed inset-0 bg-gray-950 flex flex-col items-center justify-center gap-8 text-white z-50 px-4 sm:px-6">
       {/* Spinner */}
       <div className="w-12 h-12 border-4 border-gray-700 border-t-white rounded-full animate-spin" />
 
@@ -479,7 +479,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
   if (roomState === "tmay") {
     return (
       <div className="fixed inset-0 bg-gray-950 flex flex-col text-white z-50 select-none">
-        <div className="flex-1 flex items-center justify-center relative overflow-hidden px-6">
+        <div className="flex-1 flex items-center justify-center relative overflow-hidden px-4 sm:px-6">
           <div className="flex flex-col items-center gap-6 text-center max-w-xl w-full">
             <div className="relative flex items-center justify-center w-28 h-28">
               <VoiceOrb
@@ -524,7 +524,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
           </div>
         </div>
 
-        <div className="px-6 pb-3">
+        <div className="px-4 sm:px-6 pb-3">
           {sttSupported ? (
             <div className="relative rounded-xl border border-white/10 bg-white/5 px-4 py-3 min-h-14 flex items-center">
               {!isSpeaking ? (
@@ -552,9 +552,9 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
           )}
         </div>
 
-        {error && <p role="alert" className="text-xs text-red-400 text-center px-6 pb-2">{error}</p>}
+        {error && <p role="alert" className="text-xs text-red-400 text-center px-4 sm:px-6 pb-2">{error}</p>}
 
-        <div className="flex flex-wrap items-center justify-between gap-y-2 px-6 py-4 border-t border-white/10 bg-black/30">
+        <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 sm:px-6 py-4 border-t border-white/10 bg-black/30">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 min-w-24" role="status" aria-live="polite">
               {sttSupported ? (
@@ -625,7 +625,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
   // ── Debrief failed — dedicated retry, not "answer another question" ──────────
   if (roomState === "debrief-failed") {
     return (
-      <div className="fixed inset-0 bg-gray-950 flex flex-col items-center justify-center gap-6 text-white z-50 px-6 text-center">
+      <div className="fixed inset-0 bg-gray-950 flex flex-col items-center justify-center gap-6 text-white z-50 px-4 sm:px-6 text-center">
         <div className="w-14 h-14 rounded-full bg-red-500/15 flex items-center justify-center" aria-hidden="true">
           <span className="text-2xl">⚠️</span>
         </div>
@@ -680,7 +680,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       </div>
 
       {/* ── Main area ── */}
-      <div className="flex-1 flex items-center justify-center relative overflow-hidden px-6">
+      <div className="flex-1 flex items-center justify-center relative overflow-hidden px-4 sm:px-6">
 
         {/* AI interviewer */}
         <div className="flex flex-col items-center gap-6 text-center max-w-xl w-full">
@@ -771,7 +771,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       </div>
 
       {/* ── Transcript / answer ── */}
-      <div className="px-6 pb-3">
+      <div className="px-4 sm:px-6 pb-3">
         {sttSupported ? (
           <div className="relative rounded-xl border border-white/10 bg-white/5 px-4 py-3 min-h-14 flex items-center">
             {roomState === "listening" ? (
@@ -801,11 +801,11 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       </div>
 
       {error && (
-        <p role="alert" className="text-xs text-red-400 text-center px-6 pb-2">{error}</p>
+        <p role="alert" className="text-xs text-red-400 text-center px-4 sm:px-6 pb-2">{error}</p>
       )}
 
       {/* ── Controls bar ── */}
-      <div className="flex flex-wrap items-center justify-between gap-y-2 px-6 py-4 border-t border-white/10 bg-black/30">
+      <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 sm:px-6 py-4 border-t border-white/10 bg-black/30">
 
         {/* Mic indicator + interviewer voice controls */}
         <div className="flex items-center gap-3">
