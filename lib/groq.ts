@@ -720,7 +720,12 @@ Include all 8 signals in skill_analysis in this order: TECHNICAL_DEPTH, PROBLEM_
 
   const completion = await getClient().chat.completions.create({
     model: MODEL,
-    max_tokens: 7000,
+    // gpt-oss-120b supports up to 32K output tokens on Groq. The schema grew
+    // substantially after this was first set to 7000 (question_walkthrough,
+    // priority_risks, model_answers, path_to_next_tier all added later) —
+    // an 8-question round's full report can plausibly exceed that, silently
+    // truncating the JSON with no error until JSON.parse throws below.
+    max_tokens: 12000,
     // See generateNextQuestion — gpt-oss-120b's default 'medium' reasoning
     // effort burns hidden reasoning tokens out of the same max_tokens budget.
     // The debrief output is long and structured; keep the budget for visible
@@ -732,10 +737,29 @@ Include all 8 signals in skill_analysis in this order: TECHNICAL_DEPTH, PROBLEM_
     ],
   });
 
-  const raw = completion.choices[0].message.content?.trim() ?? "";
+  const choice = completion.choices[0];
+  if (choice.finish_reason === "length") {
+    console.error(
+      `[generateDebrief] response truncated by max_tokens (${completion.usage?.completion_tokens} completion tokens used)`
+    );
+    throw new Error("The report generation ran out of room and was cut off — please try again.");
+  }
+
+  const raw = choice.message.content?.trim() ?? "";
   // Strip markdown code block if present
   const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
-  const report = JSON.parse(jsonStr) as DebriefReport;
+  let report: DebriefReport;
+  try {
+    report = JSON.parse(jsonStr) as DebriefReport;
+  } catch (parseErr) {
+    console.error("[generateDebrief] failed to parse LLM response as JSON:", parseErr);
+    console.error("[generateDebrief] raw response (first 2000 chars):", raw.slice(0, 2000));
+    throw new Error("The report came back malformed — please try again.");
+  }
+  if (!report.summary || !Array.isArray(report.skill_analysis) || report.skill_analysis.length === 0) {
+    console.error("[generateDebrief] response parsed but missing required fields:", JSON.stringify(report).slice(0, 2000));
+    throw new Error("The report came back incomplete — please try again.");
+  }
   // Defensive defaults — the LLM occasionally omits a field despite instructions;
   // downstream rendering should degrade gracefully, not crash.
   report.question_walkthrough = report.question_walkthrough ?? [];
