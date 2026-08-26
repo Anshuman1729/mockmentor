@@ -1,0 +1,84 @@
+name: Sync PRD Status
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'CLAUDE.md'
+  schedule:
+    # Run daily at 9 AM UTC
+    - cron: '0 9 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    name: Sync PRD Status to Sheets & Slack
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Extract PRD Status
+        id: extract
+        run: |
+          node scripts/prd-status-extractor.js > /tmp/prd-status.json
+          echo "Extracted PRD status:"
+          cat /tmp/prd-status.json
+
+      - name: Sync to Google Sheets
+        if: |
+          env.GOOGLE_SHEETS_ID != '' &&
+          env.GOOGLE_SHEETS_CREDENTIALS != ''
+        env:
+          GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
+          GOOGLE_SHEETS_CREDENTIALS: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}
+        run: |
+          echo "Syncing to Google Sheets (ID: $GOOGLE_SHEETS_ID)..."
+          node scripts/sync-to-sheets.js
+
+      - name: Sync to Slack Canvas
+        if: |
+          env.SLACK_BOT_TOKEN != '' &&
+          env.SLACK_CANVAS_ID != ''
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CANVAS_ID: ${{ secrets.SLACK_CANVAS_ID }}
+        run: |
+          echo "Syncing to Slack Canvas (ID: $SLACK_CANVAS_ID)..."
+          node scripts/sync-to-slack.js
+
+      - name: Report status
+        if: always()
+        run: |
+          echo "✅ PRD Status Sync Workflow Complete"
+          echo "Check logs above for any errors."
+
+      - name: Slack notification on failure
+        if: failure() && env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -d '{
+              "text": "❌ PRD Status Sync Failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*❌ PRD Status Sync Failed*\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View workflow run>"
+                  }
+                }
+              ]
+            }'
