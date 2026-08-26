@@ -213,6 +213,7 @@ Playwright and reporting back real UX friction — not just self-review.
 | `TOTAL_QUESTIONS` dynamic | Already implemented per round type (screening:5, technical:8, final:10, behavioral:7) |
 | `db/schema.sql` create | Already exists at `mockmentor/db/schema.sql` |
 | TTS switch ElevenLabs → Sarvam | Already using Sarvam AI (`/api/tts` uses Sarvam bulbul:v2) |
+| Mixpanel Session Replay | Considered 2026-08-26, declined. Requires the JS browser SDK (a different capability than the server-side event tracking above — records actual on-screen DOM activity, not events) and would capture resume/JD text, spoken-answer transcripts, and personal background during practice sessions. That's a meaningfully different privacy surface than the "camera is self-view-only, never recorded" commitment already made in CLAUDE.md. Explicitly declined by user rather than silently skipped — revisit only with a real need and a scoped/sampled + sensitive-screen-excluded plan. |
 
 ---
 
