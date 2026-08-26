@@ -123,7 +123,7 @@ export default function InteractivePreview({ isSignedIn }: { isSignedIn: boolean
               </p>
 
               <Link
-                href={isSignedIn ? "/dashboard" : "/sign-up"}
+                href="/dashboard"
                 className="landing-cta inline-flex items-center gap-2 rounded-full px-6 py-3.5 text-sm font-semibold text-white"
               >
                 {isSignedIn ? "Go to Dashboard" : "Start your real mock interview"}

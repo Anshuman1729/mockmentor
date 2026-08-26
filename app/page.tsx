@@ -38,7 +38,7 @@ export default async function LandingPage() {
             <Link href="#proof" className="hidden sm:inline hover:text-gray-950">Proof</Link>
             <Link href="/sign-in" className="text-gray-950 hover:underline">Sign in</Link>
             {!isSignedIn && (
-              <Link href="/sign-up" className="landing-nav-cta rounded-full px-4 py-2 text-sm font-semibold text-white transition-colors">
+              <Link href="/dashboard" className="landing-nav-cta rounded-full px-4 py-2 text-sm font-semibold text-white transition-colors">
                 Start free
               </Link>
             )}
@@ -102,7 +102,7 @@ export default async function LandingPage() {
               <div className="landing-reveal-4 flex flex-wrap gap-3">
                 {!isSignedIn ? (
                   <Link
-                    href="/sign-up"
+                    href="/dashboard"
                     className="landing-cta inline-flex items-center gap-2 rounded-full px-8 py-4 text-base font-semibold text-white transition-all hover:-translate-y-0.5"
                   >
                     Start your mock interview <ArrowUpRight className="w-4 h-4" />
@@ -318,7 +318,7 @@ export default async function LandingPage() {
             <p className="mt-6 text-lg text-gray-400">Free mock interview. Full evidence debrief. No credit card. No experience needed — we&apos;ll walk you through it.</p>
             <div className="mt-10 flex flex-wrap justify-center gap-4">
               {!isSignedIn ? (
-                <Link href="/sign-up" className="inline-flex items-center gap-2 rounded-full bg-white px-8 py-4 text-base font-extrabold text-gray-950 shadow-2xl shadow-white/10 hover:bg-gray-100 transition-all hover:-translate-y-0.5">
+                <Link href="/dashboard" className="inline-flex items-center gap-2 rounded-full bg-white px-8 py-4 text-base font-extrabold text-gray-950 shadow-2xl shadow-white/10 hover:bg-gray-100 transition-all hover:-translate-y-0.5">
                   Start your mock interview <ArrowUpRight className="w-4 h-4" />
                 </Link>
               ) : (
