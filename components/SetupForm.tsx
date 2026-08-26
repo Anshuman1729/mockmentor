@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import {
   ArrowLeft,
   ArrowRight,
   Check,
   ClipboardList,
   FileText,
+  LogIn,
   Loader2,
   Sparkles,
 } from "lucide-react";
@@ -61,20 +63,53 @@ const STEPS = [
   },
 ] as const;
 
+const DRAFT_KEY = "prepsignals:setup-draft";
+const PENDING_SUBMIT_KEY = "prepsignals:setup-pending-submit";
+
+type Draft = {
+  step: number;
+  form: {
+    role: string;
+    company: string;
+    yoe: string;
+    round_type: string;
+    company_stage: string;
+    domain: string;
+    jd_url: string;
+    background: string;
+  };
+  jdContent: string | null;
+};
+
+function loadDraft(): Draft | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(DRAFT_KEY);
+    return raw ? (JSON.parse(raw) as Draft) : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function SetupForm() {
   const router = useRouter();
-  const [step, setStep] = useState(0);
-  const [form, setForm] = useState({
-    role: "",
-    company: "",
-    yoe: "",
-    round_type: "",
-    company_stage: "",
-    domain: "",
-    jd_url: "",
-    background: "",
-  });
-  const [jdContent, setJdContent] = useState<string | null>(null);
+  const { isLoaded, isSignedIn } = useAuth();
+  const [initialDraft] = useState(loadDraft);
+
+  const [step, setStep] = useState(initialDraft?.step ?? 0);
+  const [form, setForm] = useState(
+    initialDraft?.form ?? {
+      role: "",
+      company: "",
+      yoe: "",
+      round_type: "",
+      company_stage: "",
+      domain: "",
+      jd_url: "",
+      background: "",
+    }
+  );
+  const [jdContent, setJdContent] = useState<string | null>(initialDraft?.jdContent ?? null);
   const [showFallback, setShowFallback] = useState(false);
   const [manualEntry, setManualEntry] = useState(false);
   const [fetchingJD, setFetchingJD] = useState(false);
@@ -83,6 +118,40 @@ export default function SetupForm() {
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [resumeParsed, setResumeParsed] = useState<string | null>(null);
   const [parsingResume, setParsingResume] = useState(false);
+  const [resumingAfterAuth, setResumingAfterAuth] = useState(false);
+  const resumeAttempted = useRef(false);
+
+  // Keep the draft alive across a Clerk sign-in/sign-up redirect round-trip
+  // (and an accidental reload) so anonymous visitors never redo the form.
+  useEffect(() => {
+    try {
+      const draft: Draft = { step, form, jdContent };
+      window.sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    } catch {
+      // sessionStorage unavailable (private mode, quota) — draft just won't survive a redirect
+    }
+  }, [step, form, jdContent]);
+
+  // If we sent the visitor off to auth from the final step, finish the job
+  // the moment they're back signed in — no extra click, no redoing the form.
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || resumeAttempted.current) return;
+    let pending = false;
+    try {
+      pending = window.sessionStorage.getItem(PENDING_SUBMIT_KEY) === "1";
+    } catch {
+      pending = false;
+    }
+    if (!pending) return;
+
+    resumeAttempted.current = true;
+    setResumingAfterAuth(true);
+    createSession({ ...form }, jdContent).catch((err) => {
+      setResumingAfterAuth(false);
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, isSignedIn]);
 
   const basicsComplete = Boolean(form.role && form.company && form.yoe && form.round_type);
   const showManualJD = manualEntry || showFallback;
@@ -142,6 +211,67 @@ export default function SetupForm() {
     }
   }
 
+  // Shared by the signed-in submit path and the post-auth resume effect.
+  // Clears the draft on success so a completed setup never resurfaces.
+  async function createSession(formValues: typeof form, jd: string | null) {
+    const res = await fetch("/api/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        role: formValues.role,
+        company: formValues.company,
+        yoe: Number(formValues.yoe),
+        round_type: formValues.round_type,
+        company_stage: formValues.company_stage || null,
+        domain: formValues.domain || null,
+        jd_content: jd,
+        background: formValues.background || null,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? "Failed to create session");
+
+    try {
+      window.sessionStorage.removeItem(DRAFT_KEY);
+      window.sessionStorage.removeItem(PENDING_SUBMIT_KEY);
+    } catch {
+      // non-fatal
+    }
+    router.push(`/interview/${data.sessionId}`);
+  }
+
+  // Fetch the JD from the URL if that's all we have; returns null (and
+  // flips to the manual-paste fallback) if there's nothing usable yet.
+  async function resolveJdContent(): Promise<string | null> {
+    if (jdContent && jdContent.trim()) return jdContent;
+
+    if (form.jd_url && !showManualJD) {
+      setFetchingJD(true);
+      try {
+        const res = await fetch("/api/fetch-jd", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: form.jd_url }),
+        });
+        const data = await res.json();
+        if (res.ok && data.content) {
+          setJdContent(data.content);
+          return data.content;
+        }
+        setShowFallback(true);
+      } catch {
+        setShowFallback(true);
+      } finally {
+        setFetchingJD(false);
+      }
+      return null;
+    }
+
+    setError("Please provide a job description (via URL or manual paste).");
+    return null;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -152,69 +282,56 @@ export default function SetupForm() {
       return;
     }
 
-    let finalJdContent = jdContent;
-
-    // Try to fetch JD if URL provided and we don't have content yet
-    if (form.jd_url && !jdContent && !showManualJD) {
-      setFetchingJD(true);
-      try {
-        const res = await fetch("/api/fetch-jd", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: form.jd_url }),
-        });
-        const data = await res.json();
-        if (res.ok && data.content) {
-          finalJdContent = data.content;
-          setJdContent(data.content);
-        } else {
-          setShowFallback(true);
-          setFetchingJD(false);
-          return;
-        }
-      } catch {
-        setShowFallback(true);
-        setFetchingJD(false);
-        return;
-      }
-      setFetchingJD(false);
-    }
-
-    if (!finalJdContent || !finalJdContent.trim()) {
-      setError("Please provide a job description (via URL or manual paste).");
-      return;
-    }
+    const finalJdContent = await resolveJdContent();
+    if (!finalJdContent) return;
 
     setSubmitting(true);
     try {
-      const res = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          role: form.role,
-          company: form.company,
-          yoe: Number(form.yoe),
-          round_type: form.round_type,
-          company_stage: form.company_stage || null,
-          domain: form.domain || null,
-          jd_content: finalJdContent,
-          background: form.background || null,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to create session");
-
-      router.push(`/interview/${data.sessionId}`);
+      await createSession(form, finalJdContent);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
       setSubmitting(false);
     }
   }
 
+  // Anonymous visitor hit the final step: stash the draft, send them to
+  // auth, and let the resume effect above finish the submit when they're back.
+  async function startAuthRedirect(mode: "sign-in" | "sign-up") {
+    setError(null);
+    if (!basicsComplete) {
+      setError("Please fill in all required fields.");
+      setStep(0);
+      return;
+    }
+
+    const finalJdContent = await resolveJdContent();
+    if (!finalJdContent) return;
+
+    try {
+      window.sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ step, form, jdContent: finalJdContent }));
+      window.sessionStorage.setItem(PENDING_SUBMIT_KEY, "1");
+    } catch {
+      // If sessionStorage isn't available the redirect will just land on an
+      // empty dashboard — no worse than today's login-gated flow.
+    }
+    router.push(`/${mode}?redirect_url=/dashboard`);
+  }
+
   const current = STEPS[step];
   const CurrentIcon = current.icon;
   const isLastStep = step === STEPS.length - 1;
+
+  if (resumingAfterAuth) {
+    return (
+      <Card className="w-full max-w-2xl rounded-3xl border-gray-100 shadow-2xl shadow-gray-200/50 py-8">
+        <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+          <Loader2 className="w-6 h-6 animate-spin text-gray-950" />
+          <p className="text-sm font-semibold text-gray-950">Setting up your interview…</p>
+          <p className="text-xs text-gray-500">Picking up right where you left off.</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="w-full max-w-2xl rounded-3xl border-gray-100 shadow-2xl shadow-gray-200/50 py-8">
@@ -484,7 +601,11 @@ export default function SetupForm() {
               <Button key="continue" type="button" onClick={handleContinue} className="flex-1 h-[44px]">
                 Continue <ArrowRight className="w-4 h-4" />
               </Button>
-            ) : (
+            ) : !isLoaded ? (
+              <Button key="loading" type="button" disabled className="flex-1 h-[44px]">
+                <Loader2 className="w-4 h-4 animate-spin" />
+              </Button>
+            ) : isSignedIn ? (
               <Button
                 key="submit"
                 type="submit"
@@ -498,6 +619,31 @@ export default function SetupForm() {
                   ? "Starting interview..."
                   : "Start Interview"}
               </Button>
+            ) : (
+              <div key="auth-cta" className="flex flex-1 flex-col gap-2">
+                <Button
+                  type="button"
+                  onClick={() => startAuthRedirect("sign-up")}
+                  className="h-[44px]"
+                  disabled={fetchingJD}
+                >
+                  {fetchingJD ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  {fetchingJD ? "Fetching JD..." : "Sign up to start"}
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => startAuthRedirect("sign-in")}
+                  className="h-[44px]"
+                  disabled={fetchingJD}
+                >
+                  <LogIn className="w-4 h-4" /> Already have an account? Log in to start
+                </Button>
+                <p className="text-center text-xs text-gray-400">
+                  Everything you filled in is saved — you won&apos;t redo this after signing in.
+                </p>
+              </div>
             )}
           </div>
         </form>

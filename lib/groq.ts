@@ -829,3 +829,54 @@ Return raw JSON only, no markdown:
 
   return { result, usage };
 }
+
+// Fixed sample question for the unauthenticated landing-page preview
+// (components/InteractivePreview.tsx). Kept fixed and server-side — the
+// public route only ever scores an answer against this one question, never
+// an arbitrary caller-supplied prompt.
+export const PREVIEW_SAMPLE_QUESTION =
+  "Tell me about a time you had to debug a critical issue under pressure.";
+
+export interface PreviewAnalysisResult {
+  score: number; // 1-5
+  evidence_quote: string; // verbatim excerpt from the candidate's answer
+  feedback: string; // one short paragraph
+}
+
+export async function scorePreviewAnswer(
+  answer: string
+): Promise<{ result: PreviewAnalysisResult; usage: { input_tokens: number; output_tokens: number; model: string } }> {
+  const systemPrompt = `You are giving a short, honest sample read of ONE practice interview answer for a marketing preview — a visitor who hasn't signed up yet is trying the product. Score only "Technical Depth": does the answer show real, specific technical substance (concrete tools/approach, a clear before/after outcome) versus vague description.
+
+Question: "${PREVIEW_SAMPLE_QUESTION}"
+Candidate's answer: "${answer}"
+
+Return raw JSON only, no markdown:
+{
+  "score": 1-5,
+  "evidence_quote": "A short verbatim excerpt (<25 words) copied exactly from the candidate's answer above that best supports the score. If the answer has no usable content, use an empty string.",
+  "feedback": "One short paragraph (2-3 sentences, plain language, no jargon): what's credible about the answer and the single biggest thing missing."
+}`;
+
+  const completion = await getClient().chat.completions.create({
+    model: MODEL,
+    max_tokens: 300,
+    reasoning_effort: "low",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: "Give the sample read." },
+    ],
+  });
+
+  const raw = completion.choices[0].message.content?.trim() ?? "";
+  const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+  const result = JSON.parse(jsonStr) as PreviewAnalysisResult;
+
+  const usage = {
+    input_tokens: completion.usage?.prompt_tokens ?? 0,
+    output_tokens: completion.usage?.completion_tokens ?? 0,
+    model: MODEL,
+  };
+
+  return { result, usage };
+}
