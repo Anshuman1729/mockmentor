@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
+import { assertSessionOwner } from "@/lib/session-auth";
 
 // Map free-text outcome → binary hire signal for calibration.
 // Anything not matching the "hired" vocabulary counts as not-hired (0).
@@ -14,6 +15,9 @@ export async function POST(
 ) {
   try {
     const { sessionId } = await params;
+    const authCheck = await assertSessionOwner(sessionId);
+    if (!authCheck.ok) return authCheck.response;
+
     const { actual_outcome, company_type } = await req.json();
 
     if (!actual_outcome && !company_type) {

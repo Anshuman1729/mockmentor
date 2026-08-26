@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { extractText } from "unpdf";
 
 const MAX_CHARS = 6000;
+const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10MB — resumes are a few hundred KB at most
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,6 +15,10 @@ export async function POST(req: NextRequest) {
 
     if (file.type !== "application/pdf") {
       return NextResponse.json({ error: "Only PDF files are supported" }, { status: 400 });
+    }
+
+    if (file.size > MAX_FILE_BYTES) {
+      return NextResponse.json({ error: "File too large (max 10MB)" }, { status: 413 });
     }
 
     const buffer = await file.arrayBuffer();

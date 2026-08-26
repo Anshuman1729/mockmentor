@@ -10,6 +10,8 @@ function getClient(): Groq {
   return _client;
 }
 
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // 25MB — Groq's own transcription file-size cap
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
@@ -17,6 +19,10 @@ export async function POST(req: NextRequest) {
 
     if (!audio || audio.size === 0) {
       return NextResponse.json({ error: "No audio provided" }, { status: 400 });
+    }
+
+    if (audio.size > MAX_AUDIO_BYTES) {
+      return NextResponse.json({ error: "Audio file too large (max 25MB)" }, { status: 413 });
     }
 
     // Convert Web API File to a format Groq SDK accepts
