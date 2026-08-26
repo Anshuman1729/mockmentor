@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 const DEBRIEF_MESSAGES = [
   { label: "Reading your transcript", sub: "Pulling everything you said into context…"          },
-  { label: "Extracting signal",       sub: "Finding what landed and what fell flat…"             },
+  { label: "Understanding what you said", sub: "Finding what landed and what fell flat…"          },
   { label: "Checking the evidence",   sub: "Pinning scores to verbatim quotes from your answers…"},
   { label: "Writing your feedback",   sub: "Turning scores into specific, actionable notes…"    },
   { label: "Compiling your report",   sub: "Almost there — putting it all together…"            },

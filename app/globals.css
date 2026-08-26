@@ -124,3 +124,71 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Landing page (app/page.tsx, InteractivePreview.tsx) — forest brand
+   accent + reveal animations. Scoped by class name, not global tokens,
+   so the authenticated app's gray-950/emerald status-color system is
+   untouched. */
+.landing-cta {
+  background: #1f4d3a;
+  box-shadow:
+    0 24px 48px -20px rgba(31, 77, 58, 0.45),
+    0 6px 14px -6px rgba(31, 77, 58, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+.landing-cta:hover {
+  background: #17392c;
+}
+
+.landing-nav-cta {
+  background: #1f4d3a;
+  box-shadow:
+    0 8px 18px -8px rgba(31, 77, 58, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+.landing-nav-cta:hover {
+  background: #17392c;
+}
+
+@keyframes landing-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes landing-glow-pulse {
+  0%,
+  100% {
+    opacity: 0.65;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+.landing-reveal-1 {
+  animation: landing-fade-up 0.7s cubic-bezier(0.16, 0.8, 0.24, 1) both;
+}
+.landing-reveal-2 {
+  animation: landing-fade-up 0.7s cubic-bezier(0.16, 0.8, 0.24, 1) 0.08s both;
+}
+.landing-reveal-3 {
+  animation: landing-fade-up 0.7s cubic-bezier(0.16, 0.8, 0.24, 1) 0.16s both;
+}
+.landing-reveal-4 {
+  animation: landing-fade-up 0.7s cubic-bezier(0.16, 0.8, 0.24, 1) 0.24s both;
+}
+.landing-reveal-5 {
+  animation: landing-fade-up 0.7s cubic-bezier(0.16, 0.8, 0.24, 1) 0.32s both;
+}
+.landing-reveal-photo {
+  animation: landing-fade-up 0.9s cubic-bezier(0.16, 0.8, 0.24, 1) 0.2s both;
+}
+.landing-glow-pulse {
+  animation: landing-glow-pulse 6s ease-in-out infinite;
+}

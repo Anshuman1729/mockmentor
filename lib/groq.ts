@@ -371,7 +371,7 @@ const FEW_SHOT_EXAMPLES = `
   "summary": {
     "recommendation": "Strong Hire",
     "hire_probability": 0,
-    "overall_impression": "Easy yes — SME-level depth on distributed systems, trade-offs surfaced before I had to ask, and every claim backed by a real number. I'd fast-track this one."
+    "overall_impression": "Easy yes — expert-level depth on distributed systems, trade-offs surfaced before I had to ask, and every claim backed by a real number. I'd fast-track this one."
   },
   "metrics": {
     "talk_to_listen_ratio": "68/32",
@@ -517,7 +517,7 @@ const FEW_SHOT_EXAMPLES = `
   "actionable_feedback": {
     "strengths": ["Willing to take ownership of past work"],
     "growth_areas": ["Must learn to quantify results", "Needs to explain technical decisions with reasoning"],
-    "top_priority_fix": "Practice the STAR format — especially the Result step — with at least one specific metric per story."
+    "top_priority_fix": "Practice structuring your stories with a clear situation, the action you took, and a specific result — with at least one metric per story."
   }
 }
 

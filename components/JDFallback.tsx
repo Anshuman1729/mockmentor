@@ -3,12 +3,15 @@
 import { useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 interface JDFallbackProps {
   onContent: (content: string) => void;
+  /** "failed" = the URL fetch didn't work (warning tone). "manual" = the candidate chose to paste instead (neutral tone). */
+  reason?: "failed" | "manual";
 }
 
-export default function JDFallback({ onContent }: JDFallbackProps) {
+export default function JDFallback({ onContent, reason = "failed" }: JDFallbackProps) {
   const [text, setText] = useState("");
 
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -16,10 +19,19 @@ export default function JDFallback({ onContent }: JDFallbackProps) {
     onContent(e.target.value);
   }
 
+  const isFailure = reason === "failed";
+
   return (
-    <div className="space-y-2 rounded-md border border-yellow-300 bg-yellow-50 p-4">
-      <p className="text-sm font-medium text-yellow-800">
-        Could not fetch the JD from that URL. Please paste the job description below.
+    <div
+      className={cn(
+        "space-y-2 rounded-xl border p-4",
+        isFailure ? "border-amber-200 bg-amber-50" : "border-gray-200 bg-gray-50"
+      )}
+    >
+      <p className={cn("text-sm font-medium", isFailure ? "text-amber-800" : "text-gray-700")}>
+        {isFailure
+          ? "Could not fetch the JD from that URL. Please paste the job description below."
+          : "Paste the job description text below."}
       </p>
       <Label htmlFor="jd-manual">Job Description (paste here)</Label>
       <Textarea

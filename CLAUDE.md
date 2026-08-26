@@ -155,6 +155,24 @@ what to do differently." Reworked within the existing architecture; see git log 
 - Sprint (₹1,999/30 days): unlimited mocks, all analytics
 - Deep Dive (₹2,999/30 days): everything + resume alignment, PDF report
 
+### ICP-First Redesign (`feat/icp-dashboard`) — reframing for first-time interview candidates
+Direct product ask: the ICP is young professionals / college students who haven't interviewed much, not
+people who already have. Researched actual first-timer pain points (knowledge/expectation gaps vs.
+recruiters, campus-placement anxiety in the India market) and competitor gaps (Pramp/Final Round
+AI/Huru — see PR description) before building.
+| Item | Status |
+|---|---|
+| BARS jargon removed from user-facing copy | ✅ Done — was leaking on the homepage ("BARS framework: ...") and in `DebriefReport.tsx`'s Signal Analysis subhead; this was already a non-negotiable-rules violation independent of the ICP work |
+| Jargon/tone pass (STAR, EQ, FAANG, "Ceiling/Floor Rule", Dominating/Submissive, etc.) | ✅ Done — rewritten in plain language across `DebriefReport.tsx`, `InterviewRoom.tsx`, `DrillPractice.tsx`, `DebriefLoadingScreen.tsx`; `lib/groq.ts` few-shot examples also detoxified so future LLM output doesn't imitate the jargon-heavy register |
+| "This is practice, not a real hiring decision" framing | ✅ Done — added under the verdict banner and as a reassurance note on the TMAY step (camera-use is also disclosed as self-view-only, never recorded) |
+| Homepage founder note / real face | 🟡 Built — section shipped with a placeholder photo block; the Higgsfield connector needed to generate the agreed AI stand-in photo was signed out mid-session, so the actual image still needs to be dropped in (swap the gradient block in `app/page.tsx` for a real `<Image>`) |
+| First-timer testimonial + softened section copy | ✅ Done |
+| `/dashboard` vs `/progress` split (Backlog: "this is bad product design") | ✅ Done — `/dashboard` is now start-a-new-interview only; new `/progress` page merges the past-interviews list with account-wide trend analytics |
+| `GET /api/sessions/analytics` (account-wide signal history) | ✅ Done |
+| Shared trend math (`lib/signals.ts`) | ✅ Done — `computeSignalTrends`/`SIGNAL_META` extracted out of `DebriefReport.tsx` so the per-session "Your Recurring Pattern" and the account-level `/progress` page can't disagree about the same underlying data |
+| `/dev/progress` DB-free preview | ✅ Done — same pattern as `/dev/debrief`; `SessionHistory` and `ProgressDashboard` both take an optional `initialSessions` prop for this |
+| Chronic-weak / improving signals, per-signal averages, round-type & company-stage breakdowns | ✅ Done — all on a 1–5 rating basis, no hire_probability % surfaced anywhere on the page (non-negotiable rule) |
+
 ## Key User Feedback
 - Entry #1: Key Moments / specific question highlights explicitly valued — do not remove
 - Entry #4: TTS slightly slow. Speed control + mute (BACKLOG #8) shipped since (was already done, backlog was stale); TTS also upgraded to `bulbul:v3` via the streaming endpoint (2026-08-26) as a further latency attempt — unverified against real user perception. Loading time praised.
