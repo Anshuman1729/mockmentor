@@ -1,14 +1,34 @@
 import Link from "next/link";
 import Image from "next/image";
 import { auth } from "@clerk/nextjs/server";
-import { ChevronRight, ArrowUpRight, Shield, Award, Clock } from "lucide-react";
+import { Plus_Jakarta_Sans } from "next/font/google";
+import { ChevronRight, ArrowUpRight, Shield, Award, Clock, Quote, BookOpen, CreditCard } from "lucide-react";
+import InteractivePreview from "@/components/InteractivePreview";
+
+const plusJakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+});
+
+// Landing-page-only brand accent (forest) — scoped to this file and
+// InteractivePreview.tsx, not the app's real gray-950/emerald status
+// system used in the authenticated product (dashboard/debrief/progress).
+const ACCENT = "#1f4d3a";
+const ACCENT_RGB = "31,77,58";
+
+const TRUST_ITEMS = [
+  { icon: Shield, title: "Practice stays private", desc: "Self-view only. Nothing is ever recorded or shared." },
+  { icon: Quote, title: "Evidence, not vibes", desc: "Every rating is backed by a direct quote from your own answer." },
+  { icon: BookOpen, title: "Built on real research", desc: "Benchmarks like talk ratio and response latency — not guesses." },
+  { icon: CreditCard, title: "Free to start", desc: "No credit card required." },
+];
 
 export default async function LandingPage() {
   const { userId } = await auth();
   const isSignedIn = !!userId;
 
   return (
-    <div className="min-h-screen bg-white text-gray-950">
+    <div className={`${plusJakarta.className} min-h-screen bg-white text-gray-950`}>
       {/* Navigation */}
       <nav className="sticky top-0 z-40 w-full border-b border-gray-100 bg-white/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
@@ -18,7 +38,7 @@ export default async function LandingPage() {
             <Link href="#proof" className="hidden sm:inline hover:text-gray-950">Proof</Link>
             <Link href="/sign-in" className="text-gray-950 hover:underline">Sign in</Link>
             {!isSignedIn && (
-              <Link href="/sign-up" className="rounded-full bg-gray-950 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 transition-colors">
+              <Link href="/sign-up" className="landing-nav-cta rounded-full px-4 py-2 text-sm font-semibold text-white transition-colors">
                 Start free
               </Link>
             )}
@@ -32,26 +52,66 @@ export default async function LandingPage() {
             a practice interview), confident and smiling — not a founder or
             an abstract UI mockup — with a small floating proof card so the
             product's value is still visible at a glance. */}
-        <section className="mx-auto max-w-6xl px-6 pt-24 pb-16 md:pt-32 md:pb-24">
-          <div className="grid gap-12 md:grid-cols-2 md:items-center md:gap-16 lg:gap-20">
+        <section className="relative overflow-hidden mx-auto max-w-6xl px-6 pt-10 pb-12 sm:pt-16 md:pt-32 md:pb-24">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute"
+            style={{
+              top: -180,
+              right: -140,
+              width: 620,
+              height: 560,
+              borderRadius: "58% 42% 61% 39% / 45% 55% 48% 52%",
+              background: `radial-gradient(circle, rgba(${ACCENT_RGB},0.08), rgba(${ACCENT_RGB},0) 62%)`,
+            }}
+          />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute"
+            style={{
+              bottom: -220,
+              left: -100,
+              width: 460,
+              height: 420,
+              borderRadius: "45% 55% 40% 60% / 55% 45% 58% 42%",
+              background: "radial-gradient(circle, rgba(3,7,18,0.04), rgba(3,7,18,0) 62%)",
+            }}
+          />
+
+          <div className="relative grid gap-12 md:grid-cols-2 md:items-center md:gap-16 lg:gap-20">
             <div className="space-y-8">
-              <h1 className="text-5xl font-extrabold leading-[1.1] tracking-tight text-gray-950 md:text-6xl lg:text-7xl">
-                You lose the offer before you walk in. <br/>
-                <span className="text-gray-400">We show you where.</span>
+              <div
+                className="landing-reveal-1 inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold"
+                style={{ background: "#e8f0ea", color: ACCENT }}
+              >
+                Evidence-first mock interviews
+              </div>
+              <h1 className="landing-reveal-2 text-3xl font-extrabold leading-[1.15] tracking-tight text-gray-950 sm:text-4xl md:text-6xl md:leading-[1.1] lg:text-7xl">
+                You lose the offer before you walk in. <br className="hidden sm:block" />
+                <span style={{ color: ACCENT }}>We show you where.</span>
               </h1>
-              <p className="text-lg leading-relaxed text-gray-500 md:text-xl">
+              <p className="landing-reveal-3 sm:hidden text-lg leading-relaxed text-gray-500">
+                Practice with questions from your real job description — then see exactly which answer cost you points.
+              </p>
+              <p className="landing-reveal-3 hidden sm:block text-lg leading-relaxed text-gray-500 md:text-xl">
                 Practice with role-specific questions from your actual job description. Get a report backed by real quotes from your own answers — not a vague &ldquo;good job&rdquo; — so you fix the gap before the real interview.
               </p>
-              <p className="text-sm font-medium text-gray-400">
+              <p className="landing-reveal-3 hidden sm:block text-sm font-medium text-gray-400">
                 Never sat through a real interview before? Good — this is exactly where you start. We explain everything as we go.
               </p>
-              <div className="flex flex-wrap gap-3">
+              <div className="landing-reveal-4 flex flex-wrap gap-3">
                 {!isSignedIn ? (
-                  <Link href="/sign-up" className="inline-flex items-center gap-2 rounded-full bg-gray-950 px-8 py-4 text-base font-semibold text-white shadow-xl shadow-gray-950/10 hover:bg-gray-800 transition-all hover:-translate-y-0.5">
+                  <Link
+                    href="/sign-up"
+                    className="landing-cta inline-flex items-center gap-2 rounded-full px-8 py-4 text-base font-semibold text-white transition-all hover:-translate-y-0.5"
+                  >
                     Start your mock interview <ArrowUpRight className="w-4 h-4" />
                   </Link>
                 ) : (
-                  <Link href="/dashboard" className="inline-flex items-center gap-2 rounded-full bg-gray-950 px-8 py-4 text-base font-semibold text-white shadow-xl shadow-gray-950/10 hover:bg-gray-800 transition-all hover:-translate-y-0.5">
+                  <Link
+                    href="/dashboard"
+                    className="landing-cta inline-flex items-center gap-2 rounded-full px-8 py-4 text-base font-semibold text-white transition-all hover:-translate-y-0.5"
+                  >
                     Go to Dashboard <ChevronRight className="w-4 h-4" />
                   </Link>
                 )}
@@ -59,7 +119,7 @@ export default async function LandingPage() {
                   See the report format
                 </Link>
               </div>
-              <div className="flex items-center gap-6 text-xs font-medium text-gray-400">
+              <div className="landing-reveal-5 flex items-center gap-6 text-xs font-medium text-gray-400">
                 <span className="flex items-center gap-2"><Shield className="w-4 h-4" /> No credit card</span>
                 <span className="flex items-center gap-2"><Clock className="w-4 h-4" /> Under 30 min</span>
                 <span className="flex items-center gap-2"><Award className="w-4 h-4" /> 8 signals scored</span>
@@ -77,7 +137,15 @@ export default async function LandingPage() {
             </div>
 
             {/* Right: a real person from the ICP, not a founder or a chart */}
-            <div className="relative">
+            <div className="landing-reveal-photo relative">
+              <div
+                aria-hidden
+                className="landing-glow-pulse pointer-events-none absolute -inset-3.5 rounded-[32px]"
+                style={{
+                  background: `radial-gradient(circle, rgba(${ACCENT_RGB},0.14), rgba(${ACCENT_RGB},0) 70%)`,
+                  filter: "blur(18px)",
+                }}
+              />
               <div className="relative aspect-[4/5] w-full overflow-hidden rounded-3xl shadow-2xl shadow-gray-200/50">
                 <Image
                   src="/hero-candidate.png"
@@ -89,7 +157,9 @@ export default async function LandingPage() {
                 />
               </div>
               {/* Floating proof chip — keeps the "this is a real evidence
-                  engine" signal without the hero being a UI screenshot */}
+                  engine" signal without the hero being a UI screenshot.
+                  "Hire" badge stays emerald — that's the app's real
+                  functional status color, not the marketing accent. */}
               <div className="absolute -bottom-6 -left-6 w-56 rounded-2xl border border-gray-100 bg-white p-4 shadow-xl shadow-gray-300/40 sm:-left-10">
                 <div className="flex items-center justify-between">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Their debrief</p>
@@ -102,6 +172,35 @@ export default async function LandingPage() {
             </div>
           </div>
         </section>
+
+        {/* Trust — Lazyweb flagged this landing page's Trust score at 54/100
+            ("no visible trust signal identified"). Four honest, verifiable
+            signals only — no invented stats or logos. */}
+        <section className="w-full border-t border-b border-gray-100 bg-white">
+          <div className="mx-auto max-w-6xl px-6 py-10">
+            <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
+              {TRUST_ITEMS.map((item) => (
+                <div key={item.title} className="flex flex-col gap-3">
+                  <div
+                    className="flex h-10 w-10 items-center justify-center rounded-[18px] text-white"
+                    style={{ background: ACCENT }}
+                  >
+                    <item.icon className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-[15px] font-bold text-gray-950">{item.title}</h3>
+                    <p className="mt-1 text-[13px] leading-relaxed text-gray-500">{item.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Interactive preview — reciprocity: give real value (a taste of
+            the evidence-based report format) before asking for signup,
+            instead of gating everything behind the account wall. */}
+        <InteractivePreview isSignedIn={isSignedIn} />
 
         {/* Pain — the real problem, framed as something we fix together,
             not a scare tactic aimed at someone already anxious about their
