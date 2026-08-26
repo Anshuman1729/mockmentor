@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { auth } from "@clerk/nextjs/server";
 import { ChevronRight, ArrowUpRight, Shield, Award, Clock } from "lucide-react";
 
@@ -28,12 +29,9 @@ export default async function LandingPage() {
       <main>
         {/* Hero — user-first, concrete, no AI slop. Right side is a photo of
             someone from the actual ICP (young professional / student doing
-            a practice interview) — not a founder or an abstract UI mockup —
-            with a small floating proof card so the product's value is still
-            visible at a glance. Photo is a placeholder pending the
-            Higgsfield connector (signed out this session) generating the
-            agreed AI stand-in image; swap the gradient block for a real
-            <Image> once one exists. */}
+            a practice interview), confident and smiling — not a founder or
+            an abstract UI mockup — with a small floating proof card so the
+            product's value is still visible at a glance. */}
         <section className="mx-auto max-w-6xl px-6 pt-24 pb-16 md:pt-32 md:pb-24">
           <div className="grid gap-12 md:grid-cols-2 md:items-center md:gap-16 lg:gap-20">
             <div className="space-y-8">
@@ -80,11 +78,16 @@ export default async function LandingPage() {
 
             {/* Right: a real person from the ICP, not a founder or a chart */}
             <div className="relative">
-              <div
-                className="aspect-[4/5] w-full rounded-3xl bg-gradient-to-br from-gray-200 via-gray-100 to-gray-300 shadow-2xl shadow-gray-200/50"
-                role="img"
-                aria-label="Photo of a candidate practicing an interview with PrepSignals"
-              />
+              <div className="relative aspect-[4/5] w-full overflow-hidden rounded-3xl shadow-2xl shadow-gray-200/50">
+                <Image
+                  src="/hero-candidate.png"
+                  alt="A candidate, confident and smiling, after practicing an interview with PrepSignals"
+                  fill
+                  priority
+                  sizes="(min-width: 768px) 40vw, 90vw"
+                  className="object-cover"
+                />
+              </div>
               {/* Floating proof chip — keeps the "this is a real evidence
                   engine" signal without the hero being a UI screenshot */}
               <div className="absolute -bottom-6 -left-6 w-56 rounded-2xl border border-gray-100 bg-white p-4 shadow-xl shadow-gray-300/40 sm:-left-10">
