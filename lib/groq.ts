@@ -294,8 +294,16 @@ export interface QuestionWalkthroughEntry {
 export interface ModelAnswer {
   question_number: number;  // the actual question this illustrates a stronger answer to
   parameter_id: string;     // the weak signal this addresses (should be a low-rated one)
-  framework: string;        // short framework name, e.g. "STAR" or "Situation → Complication → Resolution → Impact"
+  your_quote: string;       // verbatim — must be one of that signal's evidence_quotes, word-for-word
+  why_it_hurt: string;      // one sentence, in the interviewer's likely read of that exact quote — not generic advice
+  framework: string;        // short framework name — must be one of the 3 canonical frameworks (see SIGNAL_FRAMEWORKS)
   model_excerpt: string;    // 2-4 sentences: a concrete, plausible stronger answer to that specific question
+}
+
+export interface PriorityRisk {
+  title: string;              // short, e.g. "Evidence gap" — a root cause, not a symptom
+  description: string;        // one sentence: what the pattern actually is, in plain language
+  related_signal_ids: string[]; // which of the 8 signals this root cause explains (usually 2-4)
 }
 
 export interface DebriefReport {
@@ -318,12 +326,23 @@ export interface DebriefReport {
     longest_monologue_sec?: number;
     candidate_questions_asked?: number;
   };
-  skill_analysis: SkillAnalysis[]; // exactly 8 items
+  skill_analysis: SkillAnalysis[]; // exactly 8 items — supporting detail behind priority_risks, not the primary read
   question_walkthrough: QuestionWalkthroughEntry[]; // one entry per answered question, in order
-  model_answers: ModelAnswer[]; // 1-2 entries, for the weakest signal(s) only
+  // The consolidated root-cause layer: 2-3 items, not 8 separate scores.
+  // Every signal in skill_analysis rated <=3 must be explained by at least
+  // one priority_risk's related_signal_ids — these are root causes, the 8
+  // signals are the evidence for them, not a parallel list of problems.
+  priority_risks: PriorityRisk[];
+  model_answers: ModelAnswer[]; // up to 3 — one per priority_risk where the transcript supports it
+  // One sentence: what single piece of evidence, if present in the
+  // transcript, would most likely move the recommendation up one tier
+  // (e.g. Borderline -> Hire). Grounded in what's actually missing, not
+  // generic advice.
+  path_to_next_tier: string;
   behavioral_insights: {
     star_adherence_score: number;   // 0-100
     confidence_level: "High" | "Medium" | "Low";
+    confidence_rationale: string;   // why — tied to answer count/coverage, e.g. "few platform-specific questions were asked"
     red_flags: string[];
   };
   actionable_feedback: {
@@ -352,7 +371,7 @@ const FEW_SHOT_EXAMPLES = `
   "summary": {
     "recommendation": "Strong Hire",
     "hire_probability": 0,
-    "overall_impression": "The candidate demonstrated SME-level depth across distributed systems and proactively surfaced trade-offs without prompting. Every claim was backed by specific, quantifiable outcomes."
+    "overall_impression": "Easy yes — SME-level depth on distributed systems, trade-offs surfaced before I had to ask, and every claim backed by a real number. I'd fast-track this one."
   },
   "metrics": {
     "talk_to_listen_ratio": "68/32",
@@ -397,10 +416,13 @@ const FEW_SHOT_EXAMPLES = `
       "signal_ids": ["RESULT_ORIENTATION", "STAR_ALIGNMENT"]
     }
   ],
+  "priority_risks": [],
   "model_answers": [],
+  "path_to_next_tier": "Already at the top tier for this rubric — the only stretch is a stronger cross-functional stakeholder narrative in behavioral answers.",
   "behavioral_insights": {
     "star_adherence_score": 92,
     "confidence_level": "High",
+    "confidence_rationale": "Based on 5 substantive, technically detailed answers with consistent quantified outcomes across every question.",
     "red_flags": []
   },
   "actionable_feedback": {
@@ -415,7 +437,7 @@ const FEW_SHOT_EXAMPLES = `
   "summary": {
     "recommendation": "No Hire",
     "hire_probability": 0,
-    "overall_impression": "The candidate relied on vague, high-level descriptions without demonstrating how decisions were made or what results followed. Answers lacked specificity and were padded with filler."
+    "overall_impression": "I never got past surface-level descriptions — every time I pushed for how or why, I got restated context instead of a decision. I can't verify real understanding from this transcript, and that's a no."
   },
   "metrics": {
     "talk_to_listen_ratio": "81/19",
@@ -455,23 +477,41 @@ const FEW_SHOT_EXAMPLES = `
       "signal_ids": ["COMMUNICATION_SNR"]
     }
   ],
+  "priority_risks": [
+    {
+      "title": "Evidence gap",
+      "description": "Makes claims about tools and decisions without the reasoning or specifics that would let an interviewer verify real understanding.",
+      "related_signal_ids": ["TECHNICAL_DEPTH", "PROBLEM_SOLVING"]
+    },
+    {
+      "title": "Answer architecture",
+      "description": "Talks around the point before eventually reaching it, forcing the interviewer to extract the actual answer instead of receiving it directly.",
+      "related_signal_ids": ["COMMUNICATION_SNR", "STAR_ALIGNMENT", "RESULT_ORIENTATION"]
+    }
+  ],
   "model_answers": [
     {
       "question_number": 1,
       "parameter_id": "TECHNICAL_DEPTH",
-      "framework": "What → How → Why → Trade-off",
+      "your_quote": "We used Kubernetes because it's the industry standard and everyone uses it these days",
+      "why_it_hurt": "This reads as pattern-matching on a buzzword rather than a decision tied to an actual constraint, which is what an interviewer is listening for.",
+      "framework": "Answer → Reasoning → Trade-off",
       "model_excerpt": "We moved to Kubernetes specifically because our deploy cadence was blocked on manual VM provisioning — it was taking us 40 minutes per release. K8s let us define declarative deployments and roll back in under a minute. The trade-off was operational complexity: we had to invest two weeks in on-call runbooks before it paid off."
     },
     {
       "question_number": 2,
       "parameter_id": "COMMUNICATION_SNR",
-      "framework": "Answer-first (BLUF)",
+      "your_quote": "So basically what happened was, we had this issue, and the issue was kind of like a problem with the system, and we needed to fix it, so we fixed it",
+      "why_it_hurt": "The interviewer has to wait through three restatements before learning what the actual problem or fix was — that reads as unprepared even if the underlying work was solid.",
+      "framework": "Answer → Evidence → Impact",
       "model_excerpt": "Short answer: a bad cache invalidation was serving stale prices for up to 10 minutes. We fixed it by moving from TTL-based expiry to event-driven invalidation tied to the price-update queue, which cut staleness to under 5 seconds."
     }
   ],
+  "path_to_next_tier": "One technically detailed answer — naming a real constraint and a trade-off, the way the model answer above does — would be enough to move Technical Depth off the floor and shift this from No Hire toward Borderline.",
   "behavioral_insights": {
     "star_adherence_score": 28,
     "confidence_level": "Low",
+    "confidence_rationale": "Based on 5 answers, but 4 of them lacked enough specificity to confidently separate genuine gaps from nervousness or unfamiliarity with interview format.",
     "red_flags": ["Circular answers with no resolution", "No quantifiable outcomes in any response"]
   },
   "actionable_feedback": {
@@ -486,7 +526,7 @@ const FEW_SHOT_EXAMPLES = `
   "summary": {
     "recommendation": "Borderline",
     "hire_probability": 0,
-    "overall_impression": "The candidate communicated clearly and concisely but lacked the technical depth expected for this role. Strong on soft skills; weak on systems knowledge."
+    "overall_impression": "I'd want a second, more technical opinion before deciding — communication and reasoning are genuinely strong, but I don't yet have enough evidence this candidate can operate at the systems depth the role needs."
   },
   "metrics": {
     "talk_to_listen_ratio": "62/38",
@@ -526,17 +566,28 @@ const FEW_SHOT_EXAMPLES = `
       "signal_ids": ["TECHNICAL_DEPTH"]
     }
   ],
+  "priority_risks": [
+    {
+      "title": "Depth ceiling",
+      "description": "Can name and use the right tool but hasn't gone one layer deeper into how or why it works — fine for a mid-level bar, a real gap at the senior bar this role needs.",
+      "related_signal_ids": ["TECHNICAL_DEPTH"]
+    }
+  ],
   "model_answers": [
     {
       "question_number": 6,
       "parameter_id": "TECHNICAL_DEPTH",
-      "framework": "What → How → Why → Trade-off",
+      "your_quote": "I've heard of B-tree indexes but I'm not sure exactly how they work under the hood",
+      "why_it_hurt": "Honesty about a gap builds trust, but for a senior-level bar this is exactly the depth an interviewer needs to see, and its absence caps the score regardless of how well the rest of the answer was delivered.",
+      "framework": "Answer → Reasoning → Trade-off",
       "model_excerpt": "I added a B-tree index on the lookup column — it works by keeping sorted keys in a balanced tree so the query planner can do O(log n) lookups instead of a full scan. I chose it over a hash index because we also needed range queries, which hash indexes can't serve. The trade-off is slightly slower writes since every insert has to maintain the tree balance."
     }
   ],
+  "path_to_next_tier": "One answer at the depth of the model answer above — explaining a system's internals, not just its interface — would likely be enough evidence to move this from Borderline to Hire.",
   "behavioral_insights": {
     "star_adherence_score": 65,
     "confidence_level": "Medium",
+    "confidence_rationale": "Based on 7 answers with consistent communication quality, but only 2 questions probed technical internals directly, which limits how confidently the depth gap can be generalized.",
     "red_flags": ["Technical depth insufficient for senior-level role"]
   },
   "actionable_feedback": {
@@ -596,18 +647,22 @@ ${SIGNAL_ANCHORS}
 --- INSTRUCTIONS ---
 1. For EVERY signal in skill_analysis, provide at least 2 verbatim quotes from the candidate's answers as evidence_quotes. Copy word-for-word from the transcript above — do not paraphrase.
 2. Set hire_probability to 0 (this will be computed deterministically by the system).
-3. For metrics, estimate talk_to_listen_ratio based on relative answer lengths, signal_to_noise_ratio based on how much actionable content vs. filler was present, and set avg_response_latency_sec to 2.0 and interruption_count to 0 (defaults — not measurable from text).
-4. Every skill_analysis[].reasoning must do two things, not one: describe what the candidate actually did (the behavior), AND state what that signals to a real interviewer and how it would affect the hire decision. "Explained the caching layer clearly" is not enough — say what that clarity implies (e.g. "which is the kind of clarity that shortens a technical debrief and builds confidence fast"). A reasoning string that only describes behavior without stating its interview consequence is incomplete.
-5. Populate question_walkthrough with one entry per answered question, in question_number order. Each key_takeaway must name what happened in that specific answer AND its hire-decision implication (same two-part requirement as #4) in 1-2 sentences — this is a walkthrough of the interview, not a restatement of skill_analysis. Reference 1-3 signal_ids per entry (from the 8 parameter_ids) that this question's answer produced the clearest evidence for.
-6. Populate model_answers with exactly 1-2 entries, only for the lowest-rated signal(s) (rating <=3). Each entry must reference a real question_number from the transcript where that signal showed weakest, name a short framework (e.g. "STAR", "Answer-first (BLUF)", "What → How → Why → Trade-off"), and write a model_excerpt: a concrete, plausible 2-4 sentence answer to THAT SPECIFIC question, grounded in the candidate's own domain/role, not a generic template. If every signal rated 4+, return an empty array — do not invent a weakness.
-7. Return raw JSON only — no markdown, no code blocks.
+3. For metrics, estimate talk_to_listen_ratio based on relative answer lengths, signal_to_noise_ratio based on how much actionable content vs. filler was present, and set avg_response_latency_sec to 2.0 and interruption_count to 0 (defaults — not measurable from text). signal_to_noise_ratio measures DENSITY of substance in the words used — a different thing from whether those words were well-organized (that's COMMUNICATION_SNR / STAR_ALIGNMENT below). A candidate can have dense, substantive content that is nonetheless poorly structured. If your signal_to_noise_ratio is high but COMMUNICATION_SNR or STAR_ALIGNMENT is rated <=3 (or vice versa), you MUST reconcile that explicitly in the relevant reasoning text (e.g. "dense with real content, but that content wasn't organized — buried the point three sentences in") — never let the metric and the rating silently contradict each other.
+4. overall_impression must be written in first person, in the interviewer's own voice, as the verdict they'd actually report back to a hiring committee — a conclusion ("I'd fast-track this one" / "that's a no" / "I'd want a second opinion"), not a third-person summary of topics covered. This is the one thing a busy interviewer would say out loud if asked "so, how'd it go?" — see the few-shot examples above for the exact register.
+5. Every skill_analysis[].reasoning must do two things, not one: describe what the candidate actually did (the behavior), AND state what that signals to a real interviewer and how it would affect the hire decision. "Explained the caching layer clearly" is not enough — say what that clarity implies (e.g. "which is the kind of clarity that shortens a technical debrief and builds confidence fast"). A reasoning string that only describes behavior without stating its interview consequence is incomplete.
+6. Populate question_walkthrough with one entry per answered question, in question_number order. Each key_takeaway must name what happened in that specific answer AND its hire-decision implication (same two-part requirement as #5) in 1-2 sentences — this is a walkthrough of the interview, not a restatement of skill_analysis. Reference 1-3 signal_ids per entry (from the 8 parameter_ids) that this question's answer produced the clearest evidence for.
+7. Populate priority_risks with 2-3 entries — root causes, not a re-listing of every weak signal. Look across all 8 skill_analysis ratings for the pattern underneath them: e.g. "makes claims without evidence" might explain low TECHNICAL_DEPTH, PROBLEM_SOLVING, and RESULT_ORIENTATION all at once. Every signal rated <=3 must be explained by at least one priority_risk's related_signal_ids — if you can't fit a weak signal under one of your 2-3 risks, your risks are too narrow; broaden or merge them. If every signal rated 4+, priority_risks may be empty or name what's still worth sharpening.
+8. Populate model_answers with up to 3 entries — ideally one per priority_risk, for the specific question where that risk showed clearest. Each entry needs: your_quote (verbatim, MUST be copied word-for-word from one of that signal's evidence_quotes — not paraphrased, not summarized), why_it_hurt (one sentence: what the interviewer likely concluded from THAT SPECIFIC quote, not generic advice), framework (must be exactly one of these three names: "Answer → Evidence → Impact", "Situation → Action → Result", or "Answer → Reasoning → Trade-off" — pick whichever fits the question type), and model_excerpt (a concrete, plausible 2-4 sentence answer to THAT SPECIFIC question using that framework, grounded in the candidate's own domain/role, not a generic template). If every signal rated 4+, return an empty array — do not invent a weakness.
+9. Set path_to_next_tier to one sentence: the SPECIFIC evidence that, if it had appeared in the transcript, would most likely move the recommendation up one tier (e.g. Borderline -> Hire). Ground it in what's actually missing from THIS transcript — "prepare more examples" is not acceptable, name the specific kind of evidence (e.g. "one technically detailed answer with a quantified outcome, on par with the acquisition story in Q3").
+10. Set behavioral_insights.confidence_rationale to one sentence explaining WHY confidence is at that level, tied to something concrete about the session — answer count, topic coverage, or consistency (e.g. "based on 7 substantive answers; technical-depth confidence is lower because few platform-specific questions came up").
+11. Return raw JSON only — no markdown, no code blocks.
 
 Return this exact structure:
 {
   "summary": {
     "recommendation": "Strong Hire" | "Hire" | "Borderline" | "No Hire",
     "hire_probability": 0,
-    "overall_impression": "2-3 honest sentences about the candidate's overall performance."
+    "overall_impression": "1-2 sentences, first person, in the interviewer's voice — the verdict, not a topic summary."
   },
   "metrics": {
     "talk_to_listen_ratio": "e.g. 72/28",
@@ -630,17 +685,28 @@ Return this exact structure:
       "signal_ids": ["TECHNICAL_DEPTH"]
     }
   ],
+  "priority_risks": [
+    {
+      "title": "Short root-cause name, 2-4 words",
+      "description": "One sentence: what the underlying pattern actually is.",
+      "related_signal_ids": ["TECHNICAL_DEPTH", "RESULT_ORIENTATION"]
+    }
+  ],
   "model_answers": [
     {
       "question_number": 1,
       "parameter_id": "TECHNICAL_DEPTH",
-      "framework": "Short framework name",
+      "your_quote": "Verbatim quote copied word-for-word from evidence_quotes.",
+      "why_it_hurt": "One sentence: what the interviewer likely concluded from that exact quote.",
+      "framework": "Answer → Evidence → Impact" | "Situation → Action → Result" | "Answer → Reasoning → Trade-off",
       "model_excerpt": "A concrete stronger answer to that exact question, 2-4 sentences."
     }
   ],
+  "path_to_next_tier": "One sentence: the specific evidence that would most likely move the recommendation up a tier.",
   "behavioral_insights": {
     "star_adherence_score": 0-100,
     "confidence_level": "High" | "Medium" | "Low",
+    "confidence_rationale": "One sentence: why, tied to answer count/coverage/consistency.",
     "red_flags": ["list any red flags, or empty array"]
   },
   "actionable_feedback": {
@@ -654,7 +720,7 @@ Include all 8 signals in skill_analysis in this order: TECHNICAL_DEPTH, PROBLEM_
 
   const completion = await getClient().chat.completions.create({
     model: MODEL,
-    max_tokens: 4500,
+    max_tokens: 6000,
     // See generateNextQuestion — gpt-oss-120b's default 'medium' reasoning
     // effort burns hidden reasoning tokens out of the same max_tokens budget.
     // The debrief output is long and structured; keep the budget for visible
@@ -674,6 +740,11 @@ Include all 8 signals in skill_analysis in this order: TECHNICAL_DEPTH, PROBLEM_
   // downstream rendering should degrade gracefully, not crash.
   report.question_walkthrough = report.question_walkthrough ?? [];
   report.model_answers = report.model_answers ?? [];
+  report.priority_risks = report.priority_risks ?? [];
+  report.path_to_next_tier = report.path_to_next_tier ?? "";
+  if (report.behavioral_insights) {
+    report.behavioral_insights.confidence_rationale = report.behavioral_insights.confidence_rationale ?? "";
+  }
 
   const usage = {
     input_tokens: completion.usage?.prompt_tokens ?? 0,

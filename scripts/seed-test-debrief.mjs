@@ -73,7 +73,7 @@ const MOCK_DEBRIEF = {
   summary: {
     recommendation:     "Hire",
     hire_probability:   68,
-    overall_impression: "Strong data-driven PM with clear ownership and structured communication. Demonstrates real impact through quantified results in most answers. Edge case awareness and deep technical trade-off thinking are the clearest gaps to close before a Strong Hire threshold.",
+    overall_impression: "I'd hire — clear ownership, structured communication, and real quantified impact in most answers. Edge case thinking and technical trade-off depth are the gaps I'd flag before this reaches Strong Hire.",
   },
   metrics: {
     talk_to_listen_ratio:    "73/27",
@@ -148,17 +148,28 @@ const MOCK_DEBRIEF = {
       signal_ids: ["OWNERSHIP_ETHICS", "ADAPTABILITY_GROWTH"],
     },
   ],
+  priority_risks: [
+    {
+      title: "Proactive risk awareness",
+      description: "Reasons well when a risk is put in front of them, but doesn't volunteer what could go wrong before being asked.",
+      related_signal_ids: ["EDGE_CASE_MASTERY"],
+    },
+  ],
   model_answers: [
     {
       question_number: 4,
       parameter_id: "EDGE_CASE_MASTERY",
-      framework: "Happy Path + Two",
+      your_quote: "I try to understand their concern first",
+      why_it_hurt: "This is a reasonable reactive stance, but it never surfaces the proactive risk-scan a senior PM is expected to bring to a roadmap disagreement.",
+      framework: "Answer → Reasoning → Trade-off",
       model_excerpt: "Most of the pushback is technical debt or unclear scope, which I address directly — but the case I watch for is when an engineer is right and I'm wrong about feasibility. In that case I'd want us to timebox a quick spike before committing either way, rather than my roadmap opinion overriding their technical read.",
     },
   ],
+  path_to_next_tier: "One answer that proactively names a risk before being asked — the way the edge-case rewrite above does — would likely be enough to move this to Strong Hire.",
   behavioral_insights: {
     star_adherence_score: 78,
     confidence_level:     "Medium",
+    confidence_rationale: "Based on 5 substantive, well-structured answers, though only one directly probed risk/edge-case thinking.",
     red_flags:            [],
   },
   actionable_feedback: {

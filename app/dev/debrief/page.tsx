@@ -13,12 +13,12 @@ const MOCK_SESSION = {
   user_email: "test@prepsignals.dev",
 };
 
-const MOCK_DEBRIEF = {
+const MOCK_DEBRIEF: NewDebrief = {
   summary: {
-    recommendation: "Borderline" as const,
+    recommendation: "Borderline",
     hire_probability: 58,
     overall_impression:
-      "Strong communicator with real production ownership, but technical depth on distributed-systems trade-offs falls short of the senior bar for this round. The candidate is closer than the score suggests — the gaps are specific and fixable, not fundamental.",
+      "I'd want a second, more technical opinion before deciding — communication and ownership are genuinely strong, but I don't yet have enough evidence this candidate can operate at the systems depth the role needs.",
   },
   metrics: {
     talk_to_listen_ratio: "81/19",
@@ -142,25 +142,57 @@ const MOCK_DEBRIEF = {
       signal_ids: ["EDGE_CASE_MASTERY"],
     },
   ],
+  priority_risks: [
+    {
+      title: "Evidence gap",
+      description: "Names the right tools but stops before the reasoning that would let an interviewer verify real understanding — 'we used Kafka' without why, or how it actually works.",
+      related_signal_ids: ["TECHNICAL_DEPTH", "STAR_ALIGNMENT"],
+    },
+    {
+      title: "Answer architecture",
+      description: "Talks around the point before landing it, and closes stories without a number — the content is there, but it isn't organized to land fast.",
+      related_signal_ids: ["COMMUNICATION_SNR", "RESULT_ORIENTATION"],
+    },
+    {
+      title: "Reactive, not proactive",
+      description: "Every edge case and failure mode in the session came from an interviewer prompt, never volunteered first.",
+      related_signal_ids: ["EDGE_CASE_MASTERY"],
+    },
+  ],
   model_answers: [
     {
       question_number: 2,
       parameter_id: "TECHNICAL_DEPTH",
-      framework: "What → How → Why → Trade-off",
+      your_quote: "We used Kafka to decouple the services, it's pretty standard for this kind of thing",
+      why_it_hurt: "This names the tool but not the reasoning — an interviewer hears 'used a common pattern,' not 'understands why this pattern fit this problem.'",
+      framework: "Answer → Reasoning → Trade-off",
       model_excerpt:
         "We used Kafka with a keyed producer so all events for a given order land on the same partition, which keeps ordering guarantees per-order without needing a global lock. We chose a sticky partition assignor over round-robin because our consumer group rebalances were causing multi-second gaps in ordered processing during deploys. The trade-off is a small risk of hot-partitioning if one order key gets disproportionately busy — we monitor per-partition lag to catch that.",
     },
     {
       question_number: 1,
       parameter_id: "COMMUNICATION_SNR",
-      framework: "Answer-first (BLUF)",
+      your_quote: "So basically what happened was, let me think about this for a second, so the way it worked was",
+      why_it_hurt: "Three restatements before any content — the interviewer has to wait through the throat-clearing to get to the actual answer, which reads as unprepared even when the underlying work is solid.",
+      framework: "Answer → Evidence → Impact",
       model_excerpt:
         "Short version: five years building and owning backend systems, most recently leading the payments-reliability team at my current company. I can go deeper on any part of that — architecture decisions, the on-call process I built, or a specific incident — whichever is most useful to you.",
     },
+    {
+      question_number: 5,
+      parameter_id: "EDGE_CASE_MASTERY",
+      your_quote: "In the normal case it just processes the queue in order",
+      why_it_hurt: "Stopping at the happy path and waiting to be asked 'what if it fails' reads as reactive — the interviewer has to do the work of probing for risk awareness instead of seeing it volunteered.",
+      framework: "Answer → Reasoning → Trade-off",
+      model_excerpt:
+        "In the normal case it processes the queue in order. Two things I'd want to handle proactively: a message that fails repeatedly shouldn't block the whole queue, so I'd move it to a dead-letter queue after N retries. And if the consumer crashes mid-processing, I'd want idempotent handlers so a retry doesn't double-process.",
+    },
   ],
+  path_to_next_tier: "One answer at the depth of the Kafka rewrite above — explaining the reasoning behind a technical choice, not just naming it — would likely be enough to move this from Borderline to Hire.",
   behavioral_insights: {
     star_adherence_score: 61,
-    confidence_level: "Medium" as const,
+    confidence_level: "Medium",
+    confidence_rationale: "Based on 5 substantive answers with consistent communication style, but only 1 question probed technical internals directly, which limits how confidently the depth gap generalizes.",
     red_flags: ["Never proactively raised a failure mode across 5 questions — every edge case came from interviewer prompts"],
   },
   actionable_feedback: {
@@ -193,7 +225,7 @@ const STRONG_HIRE_DEBRIEF: NewDebrief = {
     recommendation: "Strong Hire",
     hire_probability: 91,
     overall_impression:
-      "Consistently exceptional across every signal — SME-level technical depth, quantified results in nearly every answer, and proactive ownership without being asked. This is one of the strongest transcripts in the sample.",
+      "Easy yes — SME-level depth, results backed by real numbers, ownership before I had to ask. I'd fast-track this one.",
   },
   metrics: {
     talk_to_listen_ratio: "68/32",
@@ -220,10 +252,13 @@ const STRONG_HIRE_DEBRIEF: NewDebrief = {
     { question_number: 4, key_takeaway: "Took a live correction on a race condition well, revised the answer on the spot instead of getting defensive.", signal_ids: ["ADAPTABILITY_GROWTH"] },
     { question_number: 5, key_takeaway: "Walked the happy path fluently and named one failure mode unprompted, though didn't go further until asked — the one place this session stayed at 'very good' instead of 'exceptional'.", signal_ids: ["EDGE_CASE_MASTERY"] },
   ],
+  priority_risks: [],
   model_answers: [],
+  path_to_next_tier: "Already at the top tier for this rubric — the only stretch is proactively naming a failure mode on every system question, not just most of them.",
   behavioral_insights: {
     star_adherence_score: 96,
     confidence_level: "High",
+    confidence_rationale: "Based on 5 substantive, technically detailed answers with consistent quantified outcomes across every question.",
     red_flags: [],
   },
   actionable_feedback: {
@@ -250,7 +285,7 @@ const NO_HIRE_DEBRIEF: NewDebrief = {
     recommendation: "No Hire",
     hire_probability: 22,
     overall_impression:
-      "Struggled to go beyond surface-level answers across almost every question. Technical claims were frequently vague or unverifiable, and several answers had no clear outcome. This session would not clear a technical screen at most companies.",
+      "I never got past surface-level descriptions — every time I pushed for how or why, I got restated context instead of a decision. I can't verify real understanding from this transcript, and that's a no.",
   },
   metrics: {
     talk_to_listen_ratio: "58/42",
@@ -277,25 +312,57 @@ const NO_HIRE_DEBRIEF: NewDebrief = {
     { question_number: 4, key_takeaway: "Got defensive when the interviewer pointed out an edge case the approach missed, rather than incorporating the feedback — this is the single most damaging moment in the transcript.", signal_ids: ["ADAPTABILITY_GROWTH"] },
     { question_number: 5, key_takeaway: "Described the queue processor's happy path only, and even when asked directly what could go wrong, gave an uncertain, unprompted-feeling answer.", signal_ids: ["EDGE_CASE_MASTERY"] },
   ],
+  priority_risks: [
+    {
+      title: "Evidence gap",
+      description: "Names tools without the reasoning to back them, and can't recover when a guess doesn't hold — claims without proof, twice over.",
+      related_signal_ids: ["TECHNICAL_DEPTH", "PROBLEM_SOLVING"],
+    },
+    {
+      title: "No closing impact",
+      description: "Every story stops at 'it worked' — never a number, never a measurable outcome across the whole session.",
+      related_signal_ids: ["COMMUNICATION_SNR", "RESULT_ORIENTATION"],
+    },
+    {
+      title: "Defensive under pushback",
+      description: "When the interviewer pointed out a real flaw, the response was to defend the original answer instead of incorporating the feedback — this is a harder gap to close than the technical ones.",
+      related_signal_ids: ["ADAPTABILITY_GROWTH", "EDGE_CASE_MASTERY"],
+    },
+  ],
   model_answers: [
     {
       question_number: 3,
       parameter_id: "PROBLEM_SOLVING",
-      framework: "Clarify → Approach → Trade-offs → Validate",
+      your_quote: "I'd just restart the service, that usually fixes it",
+      why_it_hurt: "Jumping straight to a fix without diagnosing reads as guessing, not problem-solving — and the interviewer has no way to know if the guess was a lucky one.",
+      framework: "Answer → Reasoning → Trade-off",
       model_excerpt:
         "Before I restart anything, I'd want to know: is this affecting all requests or a subset? If it's sudden, I'd check what deployed in the last hour first, since that's the highest-probability cause. I'd only restart as a last resort, since that can mask the real issue and I'd want a fix, not just a Band-Aid.",
     },
     {
+      question_number: 4,
+      parameter_id: "ADAPTABILITY_GROWTH",
+      your_quote: "No I think it would have been fine, we just didn't hit that case",
+      why_it_hurt: "This is the single most damaging moment in the transcript — defending the original answer instead of engaging with a flaw a senior interviewer just handed them for free.",
+      framework: "Situation → Action → Result",
+      model_excerpt:
+        "Good catch — you're right, that would break under concurrent access. I'd add a lock around that section, or better, make the operation idempotent so it's safe either way. I should have caught that myself before you pointed it out.",
+    },
+    {
       question_number: 5,
       parameter_id: "EDGE_CASE_MASTERY",
-      framework: "Happy Path + Two",
+      your_quote: "In the normal case it just processes the queue in order",
+      why_it_hurt: "Stopping at the happy path and waiting to be asked what could go wrong reads as reactive, not senior — and even when asked directly, the answer stayed uncertain.",
+      framework: "Answer → Reasoning → Trade-off",
       model_excerpt:
-        "Normally it processes the queue in order. Two things I'd want to handle: a message that fails repeatedly shouldn't block the whole queue forever, so I'd move it to a dead-letter queue after N retries. And if the consumer crashes mid-processing, I'd want at-least-once delivery with idempotent handlers so we don't silently drop or double-process a message.",
+        "Normally it processes the queue in order. Two things I'd want to handle: a message that fails repeatedly shouldn't block the whole queue forever, so I'd move it to a dead-letter queue after N retries. And if the consumer crashes mid-processing, I'd want idempotent handlers so we don't silently drop or double-process a message.",
     },
   ],
+  path_to_next_tier: "This session is missing the basics across the board, not one gap — but the fastest single fix is the defensiveness moment in Q4: an interviewer forgives a technical gap far more readily than a poor reaction to being corrected.",
   behavioral_insights: {
     star_adherence_score: 24,
     confidence_level: "Low",
+    confidence_rationale: "Based on 5 answers, but 4 of them lacked enough specificity to confidently separate genuine gaps from nervousness or unfamiliarity with interview format.",
     red_flags: [
       "No quantified outcome in 4 of 5 answers",
       "Could not explain a core technology choice when probed",

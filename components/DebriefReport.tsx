@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { clsx } from "clsx";
-import { SIGNAL_FRAMEWORKS } from "@/lib/rubric-researched";
+import { CANONICAL_FRAMEWORKS, type CanonicalFramework } from "@/lib/rubric-researched";
+
+const FRAMEWORKS_BY_NAME = new Map<string, CanonicalFramework>(
+  Object.values(CANONICAL_FRAMEWORKS).map((f) => [f.name, f])
+);
 
 // ---- Types ----
 
@@ -23,8 +27,16 @@ interface QuestionWalkthroughEntry {
 interface ModelAnswer {
   question_number: number;
   parameter_id: string;
+  your_quote: string;
+  why_it_hurt: string;
   framework: string;
   model_excerpt: string;
+}
+
+interface PriorityRisk {
+  title: string;
+  description: string;
+  related_signal_ids: string[];
 }
 
 interface NewDebrief {
@@ -43,10 +55,13 @@ interface NewDebrief {
   };
   skill_analysis: SkillAnalysis[];
   question_walkthrough?: QuestionWalkthroughEntry[];
+  priority_risks?: PriorityRisk[];
   model_answers?: ModelAnswer[];
+  path_to_next_tier?: string;
   behavioral_insights: {
     star_adherence_score: number;
     confidence_level: "High" | "Medium" | "Low";
+    confidence_rationale?: string;
     red_flags: string[];
   };
   actionable_feedback: {
@@ -88,17 +103,22 @@ function isNewDebrief(d: Debrief): d is NewDebrief {
 // `blurb` is a plain-English one-liner shown on every card regardless of
 // rating — without it, a signal that scores well never explains what it
 // even measured, which reads as jargon (STAR, SNR) to anyone who didn't
-// already know the term going in. The `bars` labels stay short since they
-// only ever appear next to a rating, with context already established.
+// already know the term going in.
+//
+// `bars` used to be generic tier words ("Proficient", "Exceptional") —
+// direct feedback called that "false precision": a label that doesn't tell
+// you what actually differentiates a 2 from a 3 for THIS signal. Rewritten
+// as short behavioral descriptions, so the label itself is a diagnosis, not
+// just a rung on a ladder.
 const SIGNAL_META: Record<string, { name: string; blurb: string; bars: [string, string, string] }> = {
-  TECHNICAL_DEPTH:     { name: "Technical Depth",       blurb: "How deep your technical explanations went — not just naming tools, but explaining how and why.",              bars: ["Unsatisfactory", "Proficient", "Exceptional"]      },
-  PROBLEM_SOLVING:     { name: "Problem Solving",        blurb: "How you handled ambiguity and worked through a problem you hadn't seen before.",                              bars: ["Rigid", "Adaptive", "Strategic"]                   },
-  STAR_ALIGNMENT:      { name: "Story Structure (STAR)", blurb: "Whether your stories followed Situation → Task → Action → Result, ending in a real outcome.",                  bars: ["Disorganized", "Structured", "Highly Structured"]  },
-  COMMUNICATION_SNR:   { name: "Communication Clarity",  blurb: "How much of what you said was substance vs. filler — answer-first and concise, or padded and roundabout.",    bars: ["Vague/Wordy", "Direct", "Concise"]                 },
-  RESULT_ORIENTATION:  { name: "Result Orientation",     blurb: "Whether you closed answers with a measurable outcome, not just a description of what you did.",               bars: ["Input-focused", "Output-focused", "Impact-focused"]},
-  OWNERSHIP_ETHICS:    { name: "Ownership & Initiative", blurb: "Whether you took initiative and owned outcomes — good and bad — without being asked.",                        bars: ["Passive", "Reliable", "Proactive"]                 },
-  ADAPTABILITY_GROWTH: { name: "Adaptability",           blurb: "How you responded to hints, pushback, or feedback in the moment.",                                            bars: ["Resistant", "Receptive", "Growth-focused"]         },
-  EDGE_CASE_MASTERY:   { name: "Edge Case Awareness",    blurb: "Whether you proactively named risks and failure modes, or only when asked.",                                  bars: ["Surface-level", "Aware", "Preemptive"]             },
+  TECHNICAL_DEPTH:     { name: "Technical Depth",       blurb: "How deep your technical explanations went — not just naming tools, but explaining how and why.",              bars: ["Claims competence without demonstrating it", "Explains what and how, not why", "Explains what, how, and why — plus trade-offs"] },
+  PROBLEM_SOLVING:     { name: "Problem Solving",        blurb: "How you handled ambiguity and worked through a problem you hadn't seen before.",                              bars: ["Freezes or guesses under ambiguity", "Reaches a working solution with hints", "Names the ambiguity and solves it independently"] },
+  STAR_ALIGNMENT:      { name: "Story Structure (STAR)", blurb: "Whether your stories followed Situation → Task → Action → Result, ending in a real outcome.",                  bars: ["No clear beginning, middle, or end", "Clear story, but the result is vague or missing", "Clear story that ends in a quantified result"] },
+  COMMUNICATION_SNR:   { name: "Communication Clarity",  blurb: "How much of what you said was substance vs. filler — answer-first and concise, or padded and roundabout.",    bars: ["Buries the point in filler and restating", "Answers the question, with some filler", "Leads with the answer, no filler"] },
+  RESULT_ORIENTATION:  { name: "Result Orientation",     blurb: "Whether you closed answers with a measurable outcome, not just a description of what you did.",               bars: ["Describes effort, not outcomes", "States what shipped, no measurable outcome", "States a specific, measurable outcome"] },
+  OWNERSHIP_ETHICS:    { name: "Ownership & Initiative", blurb: "Whether you took initiative and owned outcomes — good and bad — without being asked.",                        bars: ["Waits to be told what to do", "Does the job, owns their own mistakes", "Acts before being asked, owns outcomes beyond scope"] },
+  ADAPTABILITY_GROWTH: { name: "Adaptability",           blurb: "How you responded to hints, pushback, or feedback in the moment.",                                            bars: ["Gets defensive when challenged", "Adjusts when prompted", "Seeks out feedback and adjusts unprompted"] },
+  EDGE_CASE_MASTERY:   { name: "Edge Case Awareness",    blurb: "Whether you proactively named risks and failure modes, or only when asked.",                                  bars: ["Assumes the happy path only", "Names an edge case when asked", "Names edge cases before being asked"] },
 };
 
 // ---- Metric helpers ----
@@ -186,20 +206,28 @@ function buildMetrics(m: NewDebrief["metrics"]): MetricConfig[] {
       yours:       talkYours,
     },
     {
-      label:       "Signal-to-Noise",
+      // Was labeled "Signal-to-Noise" — direct feedback flagged that a high
+      // number here read as contradicting a low Communication Clarity / STAR
+      // rating elsewhere ("wait, am I high-signal or verbose?"). Renamed to
+      // "Content Density" and the copy now explicitly says this measures
+      // substance, not structure — a candidate can score well here and
+      // still lose points on Communication Clarity/Story Structure above
+      // for being disorganized. That's not a contradiction, it's two
+      // different things, and now the label says so.
+      label:       "Content Density",
       value:       snr != null ? `${(snr * 100).toFixed(0)}%` : "N/A",
       status:      getSNRStatus(snr),
-      statusLabel: snr >= 0.15 ? "High signal" : snr >= 0.10 ? "Good" : snr >= 0.05 ? "Some filler" : "Verbosity flag",
-      what:        "The density of substantive content — specific results, technical terms, action verbs — relative to total words spoken.",
-      why:         "Senior interviewers unconsciously penalise candidates who take 5 minutes to say what takes 1. High SNR is the clearest proxy for executive presence in a transcript.",
-      bench:       "Strong Hire threshold: >15%. Below 5% is a Verbosity red flag.",
+      statusLabel: snr >= 0.15 ? "High density" : snr >= 0.10 ? "Good" : snr >= 0.05 ? "Some filler" : "Verbosity flag",
+      what:        "How much of what you said was substance — specific results, technical terms, action verbs — vs. filler. This measures density, not structure: see Communication Clarity and Story Structure below for how well-organized it was.",
+      why:         "Senior interviewers unconsciously penalise candidates who take 5 minutes to say what takes 1. High density is necessary but not sufficient — dense content still needs to be organized to land.",
+      bench:       "Above 15% is strong content density. Below 5% is a Verbosity flag — mostly filler, little substance.",
       yours:       snr >= 0.15
-        ? `Your ${(snr * 100).toFixed(0)}% crosses the Strong Hire threshold for communication density.`
+        ? `Your ${(snr * 100).toFixed(0)}% is strong — the substance is there. If your structure scores below are lower, the gap isn't what you said, it's how it was organized.`
         : snr >= 0.10
         ? `Your ${(snr * 100).toFixed(0)}% is solid. Tighten by cutting preamble ("That's a great question…") and restating less.`
         : snr >= 0.05
         ? `Your ${(snr * 100).toFixed(0)}% has room to improve. Practice answer-first delivery: lead with the result, then explain.`
-        : `Your ${(snr * 100).toFixed(0)}% is a Verbosity flag. Focus on cutting filler entirely and structuring answers with the STAR method.`,
+        : `Your ${(snr * 100).toFixed(0)}% is a Verbosity flag. Focus on cutting filler entirely and structuring answers with the Answer → Evidence → Impact framework.`,
     },
     {
       label:       "Avg Response Latency",
@@ -443,8 +471,20 @@ export function DebriefReportView({
   const d = debrief as NewDebrief;
   const rStyle = recommendationStyle[d.summary.recommendation] ?? recommendationStyle["Borderline"];
   const walkthrough = d.question_walkthrough ?? [];
+  const priorityRisks = d.priority_risks ?? [];
   const modelAnswers = d.model_answers ?? [];
-  const modelAnswersByParam = new Map(modelAnswers.map((ma) => [ma.parameter_id, ma]));
+
+  // "What Helped" — the positive half of what used to be the flat "Key
+  // Moments" section, still verbatim-evidence-backed per explicit feedback
+  // that this is the strongest part of the report ("double down on this").
+  // Paired against priority_risks (the consolidated root causes) instead of
+  // a matching list of negative moments — negatives get the deeper
+  // Observed/Problem/Better treatment in "Moments That Cost You Signal"
+  // below instead of being duplicated here.
+  const topStrengthSignals = [...d.skill_analysis]
+    .sort((a, b) => b.rating - a.rating)
+    .filter((s) => s.rating >= 4)
+    .slice(0, 3);
 
   return (
     <div className="max-w-2xl mx-auto pb-16 space-y-12">
@@ -477,15 +517,15 @@ export function DebriefReportView({
             {d.summary.recommendation}
           </span>
         </div>
-        <p className="text-sm text-gray-300 leading-relaxed border-t border-gray-800 pt-4">
-          {d.summary.overall_impression}
-        </p>
-        {d.actionable_feedback?.top_priority_fix && (
-          <p className="text-sm text-white leading-relaxed border-t border-gray-800 pt-4">
-            <span className="text-[10px] font-semibold tracking-widest text-gray-500 uppercase mr-2">Bottom line —</span>
-            {d.actionable_feedback.top_priority_fix}
-          </p>
-        )}
+        {/* overall_impression is written in the interviewer's own first-person
+            voice (see lib/groq.ts prompt) — the verdict they'd actually say
+            out loud, not a topic summary. Styled as a quote and made the
+            visual centerpiece of the banner per direct feedback that this
+            line is the strongest sentence in the report and should be
+            elevated, not buried. */}
+        <blockquote className="text-lg text-white leading-snug font-medium border-t border-gray-800 pt-4">
+          &ldquo;{d.summary.overall_impression}&rdquo;
+        </blockquote>
       </div>
 
       {/* Above-the-fold quick nav — this report runs long, and a first-time
@@ -494,7 +534,8 @@ export function DebriefReportView({
           above the fold beyond the outcome badge"). */}
       <nav aria-label="Jump to section" className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
         {[
-          ["what-happened", "What Happened"],
+          ["risks", "What Helped / Hurt"],
+          ["moments", "Moments That Cost You Signal"],
           ["signal-analysis", "Signal Analysis"],
           ["metrics", "Conversational Metrics"],
           ["action-plan", "Action Plan"],
@@ -505,11 +546,57 @@ export function DebriefReportView({
         ))}
       </nav>
 
-      {/* ═══ 01 — What Happened: the question-by-question walkthrough ═══ */}
-      {walkthrough.length > 0 && (
-        <div id="what-happened" className="space-y-6 scroll-mt-20">
+      {/* ═══ 01 — What Helped / What Hurt ═══
+          Direct feedback: "the candidate doesn't need 14 things to improve,
+          they need 2-3 root causes — everything else becomes supporting
+          evidence." This is the new primary read, ahead of the 8-signal
+          detail below. */}
+      {(topStrengthSignals.length > 0 || priorityRisks.length > 0) && (
+        <div id="risks" className="space-y-6 scroll-mt-20">
           <SectionHeading
             n="01"
+            title="What Helped / What Hurt"
+            sub="Not 8 separate scores — the handful of root causes underneath them. Everything further down is the evidence behind these."
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            {topStrengthSignals.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-[10px] font-semibold tracking-wider text-emerald-600 uppercase">What helped</h3>
+                <div className="space-y-3">
+                  {topStrengthSignals.map((s) => (
+                    <div key={s.parameter_id} className="border-l-2 border-emerald-300 pl-3 space-y-1">
+                      <p className="text-sm font-semibold text-gray-900">{SIGNAL_META[s.parameter_id]?.name ?? s.parameter_id}</p>
+                      {s.evidence_quotes?.[0] && (
+                        <p className="text-xs text-gray-400 italic">&ldquo;{s.evidence_quotes[0]}&rdquo;</p>
+                      )}
+                      <p className="text-sm text-gray-600 leading-relaxed">{s.reasoning}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {priorityRisks.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-[10px] font-semibold tracking-wider text-red-500 uppercase">What hurt</h3>
+                <div className="space-y-3">
+                  {priorityRisks.map((r) => (
+                    <div key={r.title} className="border-l-2 border-red-300 pl-3 space-y-1">
+                      <p className="text-sm font-semibold text-gray-900">{r.title}</p>
+                      <p className="text-sm text-gray-600 leading-relaxed">{r.description}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ 02 — What Happened: the question-by-question walkthrough ═══ */}
+      {walkthrough.length > 0 && (
+        <div className="space-y-6">
+          <SectionHeading
+            n="02"
             title="What Happened"
             sub="A walkthrough of the interview itself — what you said in each answer, and what it signaled to the interviewer."
           />
@@ -544,126 +631,118 @@ export function DebriefReportView({
         </div>
       )}
 
-      {/* ═══ 02 — Key Moments — derived from skill_analysis highs and lows ═══ */}
-      {(() => {
-        const sorted = [...d.skill_analysis].sort((a, b) => b.rating - a.rating);
-        const positive = sorted.filter((s) => s.rating >= 4).slice(0, 2);
-        const critical = sorted.filter((s) => s.rating <= 2).slice(0, 2);
-        const moments = [
-          ...positive.map((s) => ({ ...s, positive: true })),
-          ...critical.map((s) => ({ ...s, positive: false })),
-        ];
-        if (moments.length === 0) return null;
-        return (
-          <div className="space-y-6">
-            <SectionHeading n="02" title="Key Moments" sub="The highest- and lowest-signal moments from the session." />
-            <div className="space-y-4">
-              {moments.map((m) => (
-                <div key={m.parameter_id} className={`flex gap-3 border-l-2 pl-4 ${m.positive ? "border-emerald-300" : "border-red-300"}`}>
-                  <div className="space-y-1">
-                    <h3 className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">
-                      {m.positive ? "Strength — " : "Weak spot — "}
-                      {SIGNAL_META[m.parameter_id]?.name ?? m.parameter_id}
-                    </h3>
-                    {m.evidence_quotes?.[0] && (
-                      <p className="text-xs text-gray-400 italic">&ldquo;{m.evidence_quotes[0]}&rdquo;</p>
-                    )}
-                    <p className="text-sm text-gray-700 leading-relaxed">{m.reasoning}</p>
-                  </div>
+      {/* ═══ 03 — Moments That Cost You Signal ═══
+          Observed → Problem → Better, grounded in a real quote every time.
+          Direct feedback named this exact structure as the single biggest
+          upgrade the report could make: "every weakness should show the
+          exact moment where it happened, the interviewer interpretation of
+          that moment, and the better response." */}
+      {modelAnswers.length > 0 && (
+        <div id="moments" className="space-y-6 scroll-mt-20">
+          <SectionHeading
+            n="03"
+            title="Moments That Cost You Signal"
+            sub="The exact moments behind your biggest risks — what you said, what it likely signaled, and what a stronger version sounds like."
+          />
+          <div className="space-y-5">
+            {modelAnswers.map((ma, i) => (
+              <div key={`${ma.question_number}-${i}`} className="rounded-xl border border-gray-100 p-5 space-y-4">
+                <p className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">
+                  Q{ma.question_number} · {SIGNAL_META[ma.parameter_id]?.name ?? ma.parameter_id}
+                </p>
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">You said</p>
+                  <blockquote className="text-sm text-gray-700 italic border-l-2 border-gray-200 pl-3 leading-relaxed">
+                    &ldquo;{ma.your_quote}&rdquo;
+                  </blockquote>
                 </div>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* ═══ 03 — Signal Analysis ═══ */}
-      <div id="signal-analysis" className="space-y-6 scroll-mt-20">
-        <SectionHeading
-          n="03"
-          title="Signal Analysis"
-          sub="8 BARS-scored signals, each backed by verbatim evidence. Signals rated 3 or below include a framework to fix the gap."
-        />
-        <div className="space-y-4">
-          {d.skill_analysis.map((skill) => {
-            const meta = SIGNAL_META[skill.parameter_id];
-            const barsLabel = getBarsLabel(skill.parameter_id, skill.rating);
-            const isWeak = skill.rating <= 3;
-            const accent =
-              skill.rating >= 4 ? "border-l-emerald-300" :
-              skill.rating >= 3 ? "border-l-gray-300" :
-              "border-l-red-300";
-            const framework = isWeak ? SIGNAL_FRAMEWORKS[skill.parameter_id] : undefined;
-            const modelAnswer = modelAnswersByParam.get(skill.parameter_id);
-            return (
-              <div
-                key={skill.parameter_id}
-                className={`rounded-xl border border-gray-100 border-l-4 p-5 space-y-3 ${accent}`}
-              >
-                <div className="space-y-2">
-                  <div>
-                    <h3 className="text-[10px] font-semibold tracking-wider text-gray-500 uppercase">
-                      {meta?.name ?? skill.parameter_id}
-                    </h3>
-                    {meta?.blurb && <p className="text-xs text-gray-400 mt-0.5">{meta.blurb}</p>}
-                  </div>
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <RatingDots rating={skill.rating} />
-                    <span className={clsx("text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0",
-                      skill.rating >= 4 ? "bg-emerald-50 text-emerald-700" :
-                      skill.rating >= 3 ? "bg-gray-100 text-gray-600" :
-                      "bg-red-50 text-red-600"
-                    )}>
-                      {barsLabel}
-                    </span>
-                  </div>
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold tracking-wider text-red-500 uppercase">Why it hurt</p>
+                  <p className="text-sm text-gray-700 leading-relaxed">{ma.why_it_hurt}</p>
                 </div>
-                <p className="text-sm text-gray-700 leading-relaxed">{skill.reasoning}</p>
-                {skill.evidence_quotes?.length > 0 && (
-                  <div className="space-y-2 border-l-2 border-gray-200 pl-3 mt-2">
-                    {skill.evidence_quotes.slice(0, 2).map((q, i) => (
-                      <p key={i} className="text-xs text-gray-500 italic leading-relaxed">&ldquo;{q}&rdquo;</p>
-                    ))}
-                  </div>
-                )}
-
-                {/* Finding #4 — deterministic framework callout for weak signals */}
-                {framework && (
-                  <div className="rounded-lg bg-gray-50 border border-gray-100 p-3.5 mt-3 space-y-2">
-                    <p className="text-[10px] font-semibold tracking-wider text-gray-500 uppercase">
-                      Framework to fix this — {framework.name}
-                    </p>
-                    <ol className="space-y-1">
-                      {framework.steps.map((step, i) => (
-                        <li key={i} className="flex items-baseline gap-2 text-xs text-gray-700">
-                          <span className="font-mono text-gray-400 shrink-0">{i + 1}.</span>
+                <div className="rounded-lg bg-emerald-50/50 border border-emerald-100 p-3.5 space-y-2.5">
+                  <p className="text-[10px] font-semibold tracking-wider text-emerald-700 uppercase">
+                    Try this instead — {ma.framework}
+                  </p>
+                  <p className="text-sm text-gray-800 leading-relaxed italic">&ldquo;{ma.model_excerpt}&rdquo;</p>
+                  {FRAMEWORKS_BY_NAME.get(ma.framework) && (
+                    <ol className="space-y-1 border-t border-emerald-100 pt-2">
+                      {FRAMEWORKS_BY_NAME.get(ma.framework)!.steps.map((step, i) => (
+                        <li key={i} className="flex items-baseline gap-2 text-xs text-emerald-800/80">
+                          <span className="font-mono text-emerald-700/50 shrink-0">{i + 1}.</span>
                           <span>{step}</span>
                         </li>
                       ))}
                     </ol>
-                    <p className="text-xs text-gray-500 leading-relaxed pt-1 border-t border-gray-200/70">{framework.howToApply}</p>
-                  </div>
-                )}
-
-                {/* Finding #5 — model answer excerpt, grounded in the actual question asked */}
-                {modelAnswer && (
-                  <div className="rounded-lg bg-emerald-50/50 border border-emerald-100 p-3.5 mt-3 space-y-1.5">
-                    <p className="text-[10px] font-semibold tracking-wider text-emerald-700 uppercase">
-                      What a stronger answer to Q{modelAnswer.question_number} might have sounded like
-                    </p>
-                    <p className="text-sm text-gray-800 leading-relaxed italic">&ldquo;{modelAnswer.model_excerpt}&rdquo;</p>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ 04 — Signal Analysis — supporting evidence, not the primary
+          read. Collapsed by default: the 8 individual scores are what the
+          sections above are built FROM, not a parallel list to re-scan. ═══ */}
+      <div id="signal-analysis" className="space-y-6 scroll-mt-20">
+        <SectionHeading
+          n="04"
+          title="Signal Analysis"
+          sub="The 8 BARS-scored signals behind the sections above, each backed by verbatim evidence. Expand any for the full detail."
+        />
+        <div className="space-y-3">
+          {d.skill_analysis.map((skill) => {
+            const meta = SIGNAL_META[skill.parameter_id];
+            const barsLabel = getBarsLabel(skill.parameter_id, skill.rating);
+            const accent =
+              skill.rating >= 4 ? "border-l-emerald-300" :
+              skill.rating >= 3 ? "border-l-gray-300" :
+              "border-l-red-300";
+            return (
+              <details
+                key={skill.parameter_id}
+                className={`group rounded-xl border border-gray-100 border-l-4 ${accent}`}
+              >
+                <summary className="cursor-pointer list-none p-5 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="text-[10px] font-semibold tracking-wider text-gray-500 uppercase">
+                      {meta?.name ?? skill.parameter_id}
+                    </h3>
+                    <p className="text-xs text-gray-400 mt-0.5 truncate">{meta?.blurb}</p>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <RatingDots rating={skill.rating} />
+                    <span className="text-gray-300 transition-transform group-open:rotate-180" aria-hidden="true">⌄</span>
+                  </div>
+                </summary>
+                <div className="px-5 pb-5 space-y-3 border-t border-gray-100 pt-3">
+                  <span className={clsx("inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full",
+                    skill.rating >= 4 ? "bg-emerald-50 text-emerald-700" :
+                    skill.rating >= 3 ? "bg-gray-100 text-gray-600" :
+                    "bg-red-50 text-red-600"
+                  )}>
+                    {barsLabel}
+                  </span>
+                  <p className="text-sm text-gray-700 leading-relaxed">{skill.reasoning}</p>
+                  {skill.evidence_quotes?.length > 0 && (
+                    <div className="space-y-2 border-l-2 border-gray-200 pl-3 mt-2">
+                      {skill.evidence_quotes.slice(0, 2).map((q, i) => (
+                        <p key={i} className="text-xs text-gray-500 italic leading-relaxed">&ldquo;{q}&rdquo;</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </details>
             );
           })}
         </div>
       </div>
 
-      {/* ═══ 04 — Conversational Metrics ═══ */}
+      {/* ═══ 05 — Conversational Metrics ═══ */}
       <div id="metrics" className="space-y-6 scroll-mt-20">
         <SectionHeading
-          n="04"
+          n="05"
           title="Conversational Metrics"
           sub="How the interview flowed, independent of content — measured against interview-research benchmarks."
         />
@@ -692,9 +771,9 @@ export function DebriefReportView({
         )}
       </div>
 
-      {/* ═══ 05 — Behavioral Insights ═══ */}
+      {/* ═══ 06 — Behavioral Insights ═══ */}
       <div className="space-y-6">
-        <SectionHeading n="05" title="Behavioral Insights" />
+        <SectionHeading n="06" title="Behavioral Insights" />
         <div className="flex flex-wrap items-stretch gap-3">
           <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 max-w-xs">
             <h3 className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase mb-2">Story Structure Score</h3>
@@ -709,7 +788,7 @@ export function DebriefReportView({
                 {d.behavioral_insights?.star_adherence_score ?? "—"}<span className="text-gray-400 font-normal">/100</span>
               </span>
             </div>
-            <p className="text-xs text-gray-400 leading-snug">How consistently your stories followed Situation → Task → Action → Result across the whole session.</p>
+            <p className="text-xs text-gray-400 leading-snug">How consistently your stories followed Situation → Action → Result across the whole session.</p>
           </div>
           <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 max-w-xs">
             <h3 className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase mb-2">Confidence</h3>
@@ -718,7 +797,9 @@ export function DebriefReportView({
             }`}>
               {d.behavioral_insights?.confidence_level ?? "—"}
             </span>
-            <p className="text-xs text-gray-400 leading-snug">How sure this read is, based on how consistent you were across answers.</p>
+            <p className="text-xs text-gray-400 leading-snug">
+              {d.behavioral_insights?.confidence_rationale || "How sure this read is, based on how consistent you were across answers."}
+            </p>
           </div>
         </div>
         {d.behavioral_insights?.red_flags?.length > 0 && (
@@ -736,25 +817,27 @@ export function DebriefReportView({
         )}
       </div>
 
-      {/* ═══ 06 — Action Plan ═══ */}
-      <div id="action-plan" className="space-y-6 scroll-mt-20">
-        <SectionHeading n="06" title="Action Plan" sub="What to keep doing, and the one thing to fix before your next round." />
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <div className="space-y-3">
-            <h3 className="text-[10px] font-semibold tracking-wider text-emerald-600 uppercase">Strengths</h3>
-            <ul className="space-y-2">
-              {d.actionable_feedback?.strengths?.map((s, i) => (
-                <li key={i} className="flex gap-2 text-sm text-gray-700">
-                  <span className="text-emerald-500 mt-0.5 shrink-0" aria-hidden="true">✓</span>
-                  <span>{s}</span>
-                </li>
-              ))}
-            </ul>
+      {/* ═══ 07 — What Would Move The Verdict — the counterfactual. Direct
+          feedback: "candidates don't care whether they got a 2/5 in Edge
+          Case Awareness, they care what impression they left, and what
+          would have changed it." ═══ */}
+      {d.path_to_next_tier && (
+        <div className="space-y-4">
+          <SectionHeading n="07" title="What Would Move The Verdict" sub="The one thing that, if demonstrated, would most likely change the outcome." />
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-5">
+            <p className="text-sm text-gray-800 leading-relaxed">{d.path_to_next_tier}</p>
           </div>
+        </div>
+      )}
+
+      {/* ═══ 08 — Action Plan ═══ */}
+      <div id="action-plan" className="space-y-6 scroll-mt-20">
+        <SectionHeading n="08" title="Action Plan" sub="What to fix before your next round." />
+        {d.actionable_feedback?.growth_areas?.length > 0 && (
           <div className="space-y-3">
             <h3 className="text-[10px] font-semibold tracking-wider text-amber-600 uppercase">Growth Areas</h3>
             <ul className="space-y-2">
-              {d.actionable_feedback?.growth_areas?.map((g, i) => (
+              {d.actionable_feedback.growth_areas.map((g, i) => (
                 <li key={i} className="flex gap-2 text-sm text-gray-700">
                   <span className="text-amber-500 mt-0.5 shrink-0" aria-hidden="true">→</span>
                   <span>{g}</span>
@@ -762,10 +845,10 @@ export function DebriefReportView({
               ))}
             </ul>
           </div>
-        </div>
+        )}
         {d.actionable_feedback?.top_priority_fix && (
           <div className="rounded-xl border border-gray-900 bg-gray-950 px-5 py-4">
-            <h3 className="text-[10px] font-semibold tracking-widest text-gray-500 uppercase mb-2">Top Priority Fix</h3>
+            <h3 className="text-[10px] font-semibold tracking-widest text-gray-500 uppercase mb-2">Before Your Next Interview</h3>
             <p className="text-sm text-white leading-relaxed">{d.actionable_feedback.top_priority_fix}</p>
           </div>
         )}

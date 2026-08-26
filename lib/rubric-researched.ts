@@ -136,58 +136,84 @@ export const INTERVIEW_RUBRIC: Record<string, SignalParameter> = {
 };
 
 /**
- * SIGNAL → FRAMEWORK LOOKUP (Finding #4)
+ * SIGNAL → FRAMEWORK LOOKUP (Finding #4, consolidated per direct user feedback
+ * on the first version of this table)
  * Deterministic, not LLM-generated — same philosophy as hire_probability.
  * Surfaced in the UI for any signal rated <=3, so every "you're weak here"
  * comes with a concrete "here's the structure to fix it" rather than just
  * an observation with no path forward.
+ *
+ * The first version of this table gave every signal its own named
+ * framework (8 total) — direct product feedback called that out as too
+ * much to hold in your head walking into an interview ("having six
+ * different frameworks" vs. something memorable under pressure). This
+ * version collapses to exactly 3 canonical frameworks, reused across
+ * signals by question type:
+ *   - ANSWER_EVIDENCE_IMPACT: general/communication-style answers
+ *   - SITUATION_ACTION_RESULT: behavioral/story answers (simplified STAR)
+ *   - ANSWER_REASONING_TRADEOFF: analytical/technical answers
+ * `generateDebrief`'s model_answers[].framework must name one of these
+ * three (see FEW_SHOT_EXAMPLES in lib/groq.ts) so the LLM's rewritten
+ * answers stay consistent with what's taught here.
  */
+export interface CanonicalFramework {
+  name: string;
+  steps: string[];
+}
+
+export const CANONICAL_FRAMEWORKS = {
+  ANSWER_EVIDENCE_IMPACT: {
+    name: "Answer → Evidence → Impact",
+    steps: ["Lead with the answer or conclusion in one sentence", "Back it with the specific evidence — what you actually did", "Close with the measurable impact — a number, not just an outcome"],
+  },
+  SITUATION_ACTION_RESULT: {
+    name: "Situation → Action → Result",
+    steps: ["Situation — the context, in one or two sentences", "Action — what you specifically did, in first person", "Result — a quantified outcome, or the closest honest approximation"],
+  },
+  ANSWER_REASONING_TRADEOFF: {
+    name: "Answer → Reasoning → Trade-off",
+    steps: ["State your answer or approach first", "Explain the reasoning behind it", "Name the trade-off you accepted or the alternative you rejected"],
+  },
+} as const satisfies Record<string, CanonicalFramework>;
+
 export interface SignalFramework {
-  name: string;        // short, memorable name for the framework
-  steps: string[];     // the structure, in order
+  name: string;        // one of the 3 CANONICAL_FRAMEWORKS names
+  steps: string[];     // the structure, in order (from the canonical framework)
   howToApply: string;  // one line connecting the framework to this specific signal
 }
 
 export const SIGNAL_FRAMEWORKS: Record<string, SignalFramework> = {
   TECHNICAL_DEPTH: {
-    name: "What → How → Why → Trade-off",
-    steps: ["State what you built or used", "Explain how it works, briefly", "Explain why you chose it over the obvious alternative", "Name the trade-off you accepted"],
-    howToApply: "Most answers stop at 'what' and 'how'. The 'why' and the trade-off are what separate a proficient answer from an exceptional one — they're what an interviewer can't get from a resume.",
+    ...CANONICAL_FRAMEWORKS.ANSWER_REASONING_TRADEOFF,
+    howToApply: "Most answers stop at the answer itself. The reasoning and the trade-off are what separate a proficient answer from an exceptional one — they're what an interviewer can't get from a resume.",
   },
   PROBLEM_SOLVING: {
-    name: "Clarify → Approach → Trade-offs → Validate",
-    steps: ["Clarify the ambiguity or constraint before diving in", "State your approach in one sentence", "Weigh at least one trade-off out loud", "Say how you'd validate the solution worked"],
-    howToApply: "Jumping straight to a solution reads as rigid. Naming the ambiguity first — even briefly — is what signals strategic thinking under uncertainty.",
-  },
-  STAR_ALIGNMENT: {
-    name: "STAR",
-    steps: ["Situation — the context in one or two sentences", "Task — what you specifically were responsible for", "Action — what you actually did, in first person", "Result — a quantified outcome"],
-    howToApply: "The Result step is almost always the weakest part of a STAR answer. If you can't attach a number, attach a comparison ('faster than before', 'fewer than the prior approach') instead of leaving it open-ended.",
-  },
-  COMMUNICATION_SNR: {
-    name: "Answer-first (BLUF)",
-    steps: ["Lead with the one-sentence answer", "Back it with 2-3 supporting details", "Stop — resist the urge to restate what you already said"],
-    howToApply: "Burying the answer inside a longer story forces the interviewer to extract it themselves. Say the conclusion first, then justify it.",
-  },
-  RESULT_ORIENTATION: {
-    name: "Situation → Complication → Resolution → Impact",
-    steps: ["Situation — what was happening", "Complication — what was actually broken or at risk", "Resolution — what you changed", "Impact — a specific number: %, $, time, or count"],
-    howToApply: "Describing the resolution without the impact number is the single most common gap. Even a rough estimate ('roughly halved') is stronger than no number at all.",
-  },
-  OWNERSHIP_ETHICS: {
-    name: "Own It",
-    steps: ["Name the problem, including your role in it if relevant", "State the decision you made without waiting to be told", "Describe action taken beyond your explicit scope", "Own the outcome — credit or blame — without deflecting"],
-    howToApply: "Ownership reads clearest when you describe acting before being asked, and when you own a mistake in first person instead of describing it passively.",
-  },
-  ADAPTABILITY_GROWTH: {
-    name: "Feedback Loop",
-    steps: ["What changed or what feedback you received", "How you adjusted your approach", "What you'd do differently next time"],
-    howToApply: "Interviewers are listening for a specific adjustment, not just 'I learned a lot'. Name the one thing you changed and why it was the right change.",
+    ...CANONICAL_FRAMEWORKS.ANSWER_REASONING_TRADEOFF,
+    howToApply: "Jumping straight to a solution reads as rigid. Naming your reasoning — even briefly — is what signals strategic thinking under uncertainty.",
   },
   EDGE_CASE_MASTERY: {
-    name: "Happy Path + Two",
-    steps: ["Describe the happy path solution", "Proactively name one failure mode or edge case", "Name a second, less obvious one", "Say how you'd catch or handle each"],
-    howToApply: "Waiting for the interviewer to ask 'what if X fails' reads as reactive. Naming a failure mode before they ask is what reads as senior.",
+    ...CANONICAL_FRAMEWORKS.ANSWER_REASONING_TRADEOFF,
+    howToApply: "Waiting for the interviewer to ask 'what if X fails' reads as reactive. Naming a failure mode as part of your reasoning, before they ask, is what reads as senior.",
+  },
+  STAR_ALIGNMENT: {
+    ...CANONICAL_FRAMEWORKS.SITUATION_ACTION_RESULT,
+    howToApply: "The Result step is almost always the weakest part. If you can't attach a number, attach a comparison ('faster than before', 'fewer than the prior approach') instead of leaving it open-ended.",
+  },
+  OWNERSHIP_ETHICS: {
+    ...CANONICAL_FRAMEWORKS.SITUATION_ACTION_RESULT,
+    howToApply: "Ownership reads clearest when the Action step describes acting before being asked, and when you own a mistake in first person instead of describing it passively.",
+  },
+  ADAPTABILITY_GROWTH: {
+    ...CANONICAL_FRAMEWORKS.SITUATION_ACTION_RESULT,
+    howToApply: "Interviewers are listening for a specific adjustment, not just 'I learned a lot'. Make the Action step the one concrete thing you changed, not a general lesson.",
+  },
+  COMMUNICATION_SNR: {
+    ...CANONICAL_FRAMEWORKS.ANSWER_EVIDENCE_IMPACT,
+    howToApply: "Burying the answer inside a longer story forces the interviewer to extract it themselves. Say the conclusion first, then justify it — that's what this framework is for here.",
+  },
+  RESULT_ORIENTATION: {
+    ...CANONICAL_FRAMEWORKS.ANSWER_EVIDENCE_IMPACT,
+    howToApply: "Describing the evidence without the impact number is the single most common gap. Even a rough estimate ('roughly halved') is stronger than no number at all.",
   },
 };
 
