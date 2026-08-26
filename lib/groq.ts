@@ -758,6 +758,17 @@ Include all 8 signals in skill_analysis in this order: TECHNICAL_DEPTH, PROBLEM_
       // visible server-side, and surface a message the client is actually
       // allowed to show that at least tells the user whether retrying makes
       // sense.
+      // Confirmed in production: Groq returns HTTP 413 (not the 429 that
+      // Groq.RateLimitError maps to) when a single request's token need
+      // exceeds the account's tokens-per-minute (TPM) budget outright — e.g.
+      // "Limit 8000, Requested 9346". That's a capacity ceiling on the
+      // account's current Groq tier, not a transient throttle: waiting and
+      // retrying the same transcript will fail identically every time, so
+      // this must not get the generic "try again in a moment" message.
+      if (apiErr instanceof Groq.APIError && apiErr.status === 413) {
+        console.error("[generateDebrief] Groq TPM capacity exceeded:", apiErr.status, apiErr.error);
+        throw new Error("This interview's transcript is too large for the AI service's current capacity — please contact support.");
+      }
       if (apiErr instanceof Groq.RateLimitError) {
         console.error("[generateDebrief] Groq rate limit:", apiErr.status, apiErr.error);
         throw new Error("The AI service is rate-limited right now — please wait a minute and try again.");
