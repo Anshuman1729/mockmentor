@@ -604,13 +604,20 @@ export function DebriefReportView({
           above the fold beyond the outcome badge"). */}
       <nav aria-label="Jump to section" className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
         {[
-          ["risks", "What Helped / Hurt"],
-          ["moments", "Moments That Cost You Signal"],
-          ["signal-analysis", "Signal Analysis"],
-          ["pattern", "Recurring Pattern"],
-          ["metrics", "Conversational Metrics"],
-          ["action-plan", "Action Plan"],
-        ].map(([href, label]) => (
+          { href: "risks", label: "What Helped / Hurt", shown: topStrengthSignals.length > 0 || priorityRisks.length > 0 },
+          { href: "moments", label: "Moments That Cost You Signal", shown: modelAnswers.length > 0 },
+          { href: "signal-analysis", label: "Signal Analysis", shown: true },
+          { href: "pattern", label: "Recurring Pattern", shown: signalTrends.length > 0 },
+          { href: "metrics", label: "Conversational Metrics", shown: true },
+          { href: "action-plan", label: "Action Plan", shown: true },
+        ]
+          // Only link to sections that will actually render — an anchor
+          // pointing at an id that isn't in the DOM just does nothing on
+          // click, which reads as a broken link, not an empty state
+          // (reported directly: "not clickable and I don't see that
+          // section" — the nav promised something the page didn't have).
+          .filter((item) => item.shown)
+          .map(({ href, label }) => (
           <a key={href} href={`#${href}`} className="text-gray-400 hover:text-gray-950 underline underline-offset-4 decoration-gray-200 hover:decoration-gray-400 transition-colors">
             {label}
           </a>

@@ -652,7 +652,7 @@ ${SIGNAL_ANCHORS}
 5. Every skill_analysis[].reasoning must do two things, not one: describe what the candidate actually did (the behavior), AND state what that signals to a real interviewer and how it would affect the hire decision. "Explained the caching layer clearly" is not enough — say what that clarity implies (e.g. "which is the kind of clarity that shortens a technical debrief and builds confidence fast"). A reasoning string that only describes behavior without stating its interview consequence is incomplete.
 6. Populate question_walkthrough with one entry per answered question, in question_number order. Each key_takeaway must name what happened in that specific answer AND its hire-decision implication (same two-part requirement as #5) in 1-2 sentences — this is a walkthrough of the interview, not a restatement of skill_analysis. Reference 1-3 signal_ids per entry (from the 8 parameter_ids) that this question's answer produced the clearest evidence for.
 7. Populate priority_risks with 2-3 entries — root causes, not a re-listing of every weak signal. Look across all 8 skill_analysis ratings for the pattern underneath them: e.g. "makes claims without evidence" might explain low TECHNICAL_DEPTH, PROBLEM_SOLVING, and RESULT_ORIENTATION all at once. Every signal rated <=3 must be explained by at least one priority_risk's related_signal_ids — if you can't fit a weak signal under one of your 2-3 risks, your risks are too narrow; broaden or merge them. If every signal rated 4+, priority_risks may be empty or name what's still worth sharpening.
-8. Populate model_answers with up to 3 entries — ideally one per priority_risk, for the specific question where that risk showed clearest. Each entry needs: your_quote (verbatim, MUST be copied word-for-word from one of that signal's evidence_quotes — not paraphrased, not summarized), why_it_hurt (one sentence: what the interviewer likely concluded from THAT SPECIFIC quote, not generic advice), framework (must be exactly one of these three names: "Answer → Evidence → Impact", "Situation → Action → Result", or "Answer → Reasoning → Trade-off" — pick whichever fits the question type), and model_excerpt (a concrete, plausible 2-4 sentence answer to THAT SPECIFIC question using that framework, grounded in the candidate's own domain/role, not a generic template). If every signal rated 4+, return an empty array — do not invent a weakness.
+8. Populate model_answers. If priority_risks is non-empty, model_answers MUST also be non-empty — at least 1 entry, ideally one per priority_risk, up to 3 total. Only return an empty array when priority_risks is ALSO empty (every signal rated 4+) — never skip this field just because filling it out is demanding; an empty array is a claim that nothing needs fixing, and if you've named a priority_risk that claim is false. Each entry needs: your_quote (a real quote from the candidate's answer to that specific question — take it directly from the transcript, verbatim, no paraphrasing — it does not need to be identical to a string already used in evidence_quotes, just genuinely from the transcript), why_it_hurt (one sentence: what the interviewer likely concluded from THAT SPECIFIC quote, not generic advice), framework (must be exactly one of these three names: "Answer → Evidence → Impact", "Situation → Action → Result", or "Answer → Reasoning → Trade-off" — pick whichever fits the question type), and model_excerpt (a concrete, plausible 2-4 sentence answer to THAT SPECIFIC question using that framework, grounded in the candidate's own domain/role, not a generic template).
 9. Set path_to_next_tier to one sentence: the SPECIFIC evidence that, if it had appeared in the transcript, would most likely move the recommendation up one tier (e.g. Borderline -> Hire). Ground it in what's actually missing from THIS transcript — "prepare more examples" is not acceptable, name the specific kind of evidence (e.g. "one technically detailed answer with a quantified outcome, on par with the acquisition story in Q3").
 10. Set behavioral_insights.confidence_rationale to one sentence explaining WHY confidence is at that level, tied to something concrete about the session — answer count, topic coverage, or consistency (e.g. "based on 7 substantive answers; technical-depth confidence is lower because few platform-specific questions came up").
 11. Return raw JSON only — no markdown, no code blocks.
@@ -720,7 +720,7 @@ Include all 8 signals in skill_analysis in this order: TECHNICAL_DEPTH, PROBLEM_
 
   const completion = await getClient().chat.completions.create({
     model: MODEL,
-    max_tokens: 6000,
+    max_tokens: 7000,
     // See generateNextQuestion — gpt-oss-120b's default 'medium' reasoning
     // effort burns hidden reasoning tokens out of the same max_tokens budget.
     // The debrief output is long and structured; keep the budget for visible
@@ -744,6 +744,16 @@ Include all 8 signals in skill_analysis in this order: TECHNICAL_DEPTH, PROBLEM_
   report.path_to_next_tier = report.path_to_next_tier ?? "";
   if (report.behavioral_insights) {
     report.behavioral_insights.confidence_rationale = report.behavioral_insights.confidence_rationale ?? "";
+  }
+  // Instruction #8 requires model_answers to be non-empty whenever
+  // priority_risks is non-empty — if the model didn't follow that, it's a
+  // real prompt-compliance gap worth knowing about rather than a silent
+  // empty section. Logged, not enforced: better to show nothing than to
+  // synthesize a fake rewrite server-side.
+  if (report.priority_risks.length > 0 && report.model_answers.length === 0) {
+    console.warn(
+      `[generateDebrief] priority_risks non-empty (${report.priority_risks.length}) but model_answers came back empty — prompt-compliance gap, "Moments That Cost You Signal" will be hidden`
+    );
   }
 
   const usage = {
