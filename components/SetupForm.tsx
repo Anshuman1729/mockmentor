@@ -211,6 +211,9 @@ export default function SetupForm() {
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Not sure which one? &ldquo;Technical Screen&rdquo; is usually the first round a company runs, so it&apos;s a safe place to start.
+              </p>
             </div>
           </div>
 

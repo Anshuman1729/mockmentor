@@ -18,7 +18,7 @@ interface SessionSummary {
   hire_recommendation: string | null;
 }
 
-function RecommendationBadge({ rec }: { rec: string | null }) {
+export function RecommendationBadge({ rec }: { rec: string | null }) {
   if (!rec)
     return (
       <Badge variant="secondary" className="text-xs">
@@ -52,17 +52,22 @@ function formatDate(dateStr: string) {
   });
 }
 
-export default function SessionHistory() {
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+// `initialSessions` lets a DB-free preview (see /dev/progress) inject mock
+// data instead of hitting the network — same pattern as DebriefReportView
+// taking props directly rather than fetching itself. Normal usage omits it
+// and the component fetches as before.
+export default function SessionHistory({ initialSessions }: { initialSessions?: SessionSummary[] } = {}) {
+  const [sessions, setSessions] = useState<SessionSummary[]>(initialSessions ?? []);
+  const [loading, setLoading] = useState(initialSessions === undefined);
 
   useEffect(() => {
+    if (initialSessions !== undefined) return;
     fetch("/api/sessions")
       .then((r) => r.json())
       .then((d) => setSessions(d.sessions ?? []))
       .catch(() => setSessions([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [initialSessions]);
 
   if (loading) {
     return (

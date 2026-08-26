@@ -9,7 +9,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <Link href="/" className="text-lg font-extrabold tracking-tight text-gray-950">
             PrepSignals
           </Link>
-          <UserButton />
+          <div className="flex items-center gap-5">
+            <Link href="/dashboard" className="text-sm font-medium text-gray-500 hover:text-gray-950 transition-colors">
+              Start Interview
+            </Link>
+            <Link href="/progress" className="text-sm font-medium text-gray-500 hover:text-gray-950 transition-colors">
+              My Progress
+            </Link>
+            <UserButton />
+          </div>
         </div>
       </header>
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10">{children}</main>

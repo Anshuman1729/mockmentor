@@ -1,5 +1,5 @@
+import Link from "next/link";
 import SetupForm from "@/components/SetupForm";
-import SessionHistory from "@/components/SessionHistory";
 
 export default function DashboardPage() {
   return (
@@ -15,13 +15,12 @@ export default function DashboardPage() {
 
       <SetupForm />
 
-      <div className="w-full max-w-2xl">
-        <div className="border-t border-gray-100 mb-8" />
-        <div className="space-y-4">
-          <h2 className="text-xs font-semibold tracking-widest text-gray-400 uppercase">Past Interviews</h2>
-          <SessionHistory />
-        </div>
-      </div>
+      <Link
+        href="/progress"
+        className="text-sm font-medium text-gray-500 hover:text-gray-950 underline underline-offset-4 decoration-gray-300 hover:decoration-gray-500 transition-colors"
+      >
+        See your past interviews &amp; progress →
+      </Link>
     </div>
   );
 }
