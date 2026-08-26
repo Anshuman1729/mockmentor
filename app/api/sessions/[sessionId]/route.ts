@@ -60,7 +60,19 @@ export async function GET(
     `;
 
     const debriefRow = debriefs[0] ?? null;
-    const debrief = debriefRow?.debrief_data ?? null;
+    // hire_probability is internal-only (see CLAUDE.md non-negotiable rules) —
+    // strip it here rather than relying on the UI to simply not render it,
+    // since the raw field would otherwise be visible in the network response.
+    const debrief = debriefRow?.debrief_data
+      ? {
+          ...debriefRow.debrief_data,
+          summary: Object.fromEntries(
+            Object.entries(debriefRow.debrief_data.summary ?? {}).filter(
+              ([key]) => key !== "hire_probability"
+            )
+          ),
+        }
+      : null;
 
     // Cross-interview trend data (see DebriefReport.tsx "Your Recurring
     // Pattern"): the same user's other completed, debriefed sessions, so a

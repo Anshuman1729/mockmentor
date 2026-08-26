@@ -44,7 +44,10 @@ interface PriorityRisk {
 interface NewDebrief {
   summary: {
     recommendation: "Strong Hire" | "Hire" | "Borderline" | "No Hire";
-    hire_probability: number;
+    // Internal-only field (see CLAUDE.md non-negotiable rules) — the API
+    // strips it before this ever reaches the client. Optional here so the
+    // type doesn't imply the UI should ever read or render it.
+    hire_probability?: number;
     overall_impression: string;
   };
   metrics: {
