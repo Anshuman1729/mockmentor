@@ -100,7 +100,7 @@ export function DrillPractice({
               disabled={submitting}
               className="px-4 py-2 rounded-md bg-gray-950 text-white text-xs font-semibold disabled:opacity-40 hover:bg-gray-800 transition-colors"
             >
-              {submitting ? "Scoring…" : "Score my attempt"}
+              {submitting ? "Checking…" : "See how this lands"}
             </button>
             <button
               type="button"

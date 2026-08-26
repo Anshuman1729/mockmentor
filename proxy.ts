@@ -4,6 +4,12 @@ const isPublicRoute = createRouteMatcher([
   "/",
   "/sign-in(.*)",
   "/sign-up(.*)",
+  // Anonymous visitors fill in SetupForm here; auth is only required at the
+  // final "Start Interview" submit (POST /api/sessions stays protected).
+  "/dashboard",
+  // Unauthenticated landing-page "try it" preview — rate-limited and input-capped
+  // in the route itself (see app/api/preview-analysis/route.ts), not gated by auth.
+  "/api/preview-analysis",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {

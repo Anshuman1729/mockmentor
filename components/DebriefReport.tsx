@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { clsx } from "clsx";
 import { CANONICAL_FRAMEWORKS, type CanonicalFramework } from "@/lib/rubric-researched";
+import { SIGNAL_META, computeSignalTrends } from "@/lib/signals";
 import { DrillPractice } from "@/components/DrillPractice";
 
 const FRAMEWORKS_BY_NAME = new Map<string, CanonicalFramework>(
@@ -117,27 +118,6 @@ function isNewDebrief(d: Debrief): d is NewDebrief {
   return "skill_analysis" in d && Array.isArray((d as NewDebrief).skill_analysis);
 }
 
-// `blurb` is a plain-English one-liner shown on every card regardless of
-// rating — without it, a signal that scores well never explains what it
-// even measured, which reads as jargon (STAR, SNR) to anyone who didn't
-// already know the term going in.
-//
-// `bars` used to be generic tier words ("Proficient", "Exceptional") —
-// direct feedback called that "false precision": a label that doesn't tell
-// you what actually differentiates a 2 from a 3 for THIS signal. Rewritten
-// as short behavioral descriptions, so the label itself is a diagnosis, not
-// just a rung on a ladder.
-const SIGNAL_META: Record<string, { name: string; blurb: string; bars: [string, string, string] }> = {
-  TECHNICAL_DEPTH:     { name: "Technical Depth",       blurb: "How deep your technical explanations went — not just naming tools, but explaining how and why.",              bars: ["Claims competence without demonstrating it", "Explains what and how, not why", "Explains what, how, and why — plus trade-offs"] },
-  PROBLEM_SOLVING:     { name: "Problem Solving",        blurb: "How you handled ambiguity and worked through a problem you hadn't seen before.",                              bars: ["Freezes or guesses under ambiguity", "Reaches a working solution with hints", "Names the ambiguity and solves it independently"] },
-  STAR_ALIGNMENT:      { name: "Story Structure (STAR)", blurb: "Whether your stories followed Situation → Task → Action → Result, ending in a real outcome.",                  bars: ["No clear beginning, middle, or end", "Clear story, but the result is vague or missing", "Clear story that ends in a quantified result"] },
-  COMMUNICATION_SNR:   { name: "Communication Clarity",  blurb: "How much of what you said was substance vs. filler — answer-first and concise, or padded and roundabout.",    bars: ["Buries the point in filler and restating", "Answers the question, with some filler", "Leads with the answer, no filler"] },
-  RESULT_ORIENTATION:  { name: "Result Orientation",     blurb: "Whether you closed answers with a measurable outcome, not just a description of what you did.",               bars: ["Describes effort, not outcomes", "States what shipped, no measurable outcome", "States a specific, measurable outcome"] },
-  OWNERSHIP_ETHICS:    { name: "Ownership & Initiative", blurb: "Whether you took initiative and owned outcomes — good and bad — without being asked.",                        bars: ["Waits to be told what to do", "Does the job, owns their own mistakes", "Acts before being asked, owns outcomes beyond scope"] },
-  ADAPTABILITY_GROWTH: { name: "Adaptability",           blurb: "How you responded to hints, pushback, or feedback in the moment.",                                            bars: ["Gets defensive when challenged", "Adjusts when prompted", "Seeks out feedback and adjusts unprompted"] },
-  EDGE_CASE_MASTERY:   { name: "Edge Case Awareness",    blurb: "Whether you proactively named risks and failure modes, or only when asked.",                                  bars: ["Assumes the happy path only", "Names an edge case when asked", "Names edge cases before being asked"] },
-};
-
 // ---- Metric helpers ----
 
 type MetricStatus = "ideal" | "good" | "watch" | "flag";
@@ -204,9 +184,9 @@ function buildMetrics(m: NewDebrief["metrics"]): MetricConfig[] {
     talkPct >= 60 && talkPct <= 75
       ? `Your ${talkPct}% is in the target range — you drove the conversation without crowding the interviewer out.`
       : talkPct > 78
-      ? `At ${talkPct}%, you triggered the Ceiling Rule: the interviewer may not have been able to finish the structured rubric. Practice pausing to check for alignment after each 60–90 second block.`
+      ? `At ${talkPct}%, you were talking so much the interviewer may not have gotten through everything they wanted to ask. Practice pausing to check in after each 60–90 second block.`
       : talkPct < 55
-      ? `At ${talkPct}%, you've hit the Floor Rule: there wasn't enough signal for a confident hire decision. You need to speak more — not longer, but more substantively.`
+      ? `At ${talkPct}%, you didn't say enough for the interviewer to confidently judge your fit. You need to speak more — not longer, but more substantively.`
       : talkPct > 75
       ? `At ${talkPct}%, you're just above the ideal ceiling. Tighten answers and leave deliberate space for follow-ups.`
       : `At ${talkPct}%, you were slightly passive. Push yourself to elaborate on the 'how' and 'why' in your answers.`;
@@ -218,8 +198,8 @@ function buildMetrics(m: NewDebrief["metrics"]): MetricConfig[] {
       status:      getTalkRatioStatus(m?.talk_to_listen_ratio ?? "0/100"),
       statusLabel: talkStatusLabel,
       what:        "The share of the conversation you held vs. the interviewer.",
-      why:         "This is how interviewers proxy confidence and EQ simultaneously. Too little means insufficient signal to make a hire decision. Too much means you lack conciseness or the ability to read the room.",
-      bench:       "Target: 60–75%. Above 78% risks Monologuing (interviewer couldn't complete the rubric). Below 55% risks a No Hire due to insufficient signal.",
+      why:         "This is how interviewers read confidence and how well you read the room, at the same time. Too little and the interviewer doesn't have enough to go on. Too much and you're not leaving room for them to steer or ask follow-ups.",
+      bench:       "Target: 60–75%. Above 78% risks talking so much the interviewer can't get through their questions. Below 55% risks coming across passive or underprepared.",
       yours:       talkYours,
     },
     {
@@ -250,16 +230,16 @@ function buildMetrics(m: NewDebrief["metrics"]): MetricConfig[] {
       label:       "Avg Response Latency",
       value:       latency != null ? `${latency}s` : "N/A",
       status:      getLatencyStatus(latency),
-      statusLabel: latency >= 1.2 && latency <= 2.0 ? "Composed" : latency > 3.5 ? "Indecisive" : latency < 0.5 ? "Interruptive" : latency > 2.0 ? "Acceptable" : "Watch",
+      statusLabel: latency >= 1.2 && latency <= 2.0 ? "Composed" : latency > 3.5 ? "Hesitant" : latency < 0.5 ? "Cuts in early" : latency > 2.0 ? "Acceptable" : "Watch",
       what:        "Average pause before you began answering, measured from when the interviewer finished speaking.",
-      why:         "The pause is a seniority signal in both directions. Too long suggests you're unprepared or anxious. Too short suggests you're not listening fully — or are interruptive.",
-      bench:       "Target: 1.2–2.0s (composed). Above that trends toward Indecisive; below 0.5s trends toward Interruptive.",
+      why:         "The pause tells an interviewer how prepared you are, in both directions. Too long suggests you're unprepared or anxious. Too short suggests you're not fully listening — or cutting in before they're done.",
+      bench:       "Target: 1.2–2.0s (composed). Above that starts to read as hesitant; below 0.5s starts to read as cutting people off.",
       yours:       latency >= 1.2 && latency <= 2.0
         ? `Your ${latency}s average is in the composed range — thoughtful without hesitation.`
         : latency > 3.5
-        ? `Your ${latency}s average reads as Indecisive. Interviewers at fast-paced companies (startups, FAANG) notice this. Practice out loud so you reach answers faster.`
+        ? `Your ${latency}s average reads as hesitant — interviewers, especially at fast-moving companies, notice the pause. Practice answering out loud so you reach your point faster.`
         : latency < 0.5
-        ? `Your ${latency}s average is too fast — it can read as Interruptive or as not fully processing the question. Allow a beat before responding.`
+        ? `Your ${latency}s average is too fast — it can read as cutting in, or as not fully processing the question. Allow a beat before responding.`
         : latency > 2.0
         ? `Your ${latency}s is slightly above the ideal window. Not a flag, but drilling common question types will bring this down.`
         : `Your ${latency}s is on the lower edge of the ideal window. Fine, but ensure you're fully absorbing multi-part questions before starting.`,
@@ -268,17 +248,17 @@ function buildMetrics(m: NewDebrief["metrics"]): MetricConfig[] {
       label:       "Interruptions",
       value:       interr != null ? String(interr) : "N/A",
       status:      getInterruptionStatus(interr),
-      statusLabel: interr === 0 ? "Clean" : interr === 1 ? "Minimal" : interr === 2 ? "At the limit" : "Dominating",
+      statusLabel: interr === 0 ? "Clean" : interr === 1 ? "Minimal" : interr === 2 ? "At the limit" : "Talks over people",
       what:        "How many times you spoke over or cut off the interviewer before they finished.",
-      why:         "Interruptions are a direct signal of EQ and collaborative style. High-stake roles (PM, leadership) require strong active listening. Interviewers flag patterns, not one-offs.",
-      bench:       "Target: fewer than 2 per session. Above 2 is Dominating — a poor collaborator flag. Note: 0 interruptions with low talk ratio can signal Submissive.",
+      why:         "Interruptions are a direct signal of how well you listen and collaborate. Leadership and people-facing roles are especially strict about this. Interviewers notice a pattern, not a one-off.",
+      bench:       "Target: fewer than 2 per session. More than that reads as not letting the interviewer finish. Note: 0 interruptions combined with a low talk ratio can read as passive rather than a good listener.",
       yours:       interr === 0
         ? "Zero interruptions — clean active listening throughout the session."
         : interr === 1
         ? "One interruption — a non-issue. Stay mindful of it in longer sessions."
         : interr === 2
         ? "Two interruptions puts you at the limit. Two more in a future session becomes a pattern interviewers consciously note."
-        : `${interr} interruptions crosses into Dominating territory — a collaborator flag for most roles. Practice holding back until the interviewer's sentence is fully complete.`,
+        : `${interr} interruptions is enough that it reads as not letting the interviewer finish, which most roles will flag. Practice holding back until their sentence is fully complete.`,
     },
   ];
 }
@@ -456,7 +436,7 @@ export function DebriefReportView({
     return (
       <div className="max-w-xl mx-auto space-y-8 pb-16">
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          Legacy report — generated before the Week 2 schema update.
+          This report was generated with an older format — some newer sections may be missing.
         </div>
         <div className="space-y-3 pt-2">
           <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase">Interview Feedback</p>
@@ -518,43 +498,9 @@ export function DebriefReportView({
     .filter((s) => s.rating >= 4)
     .slice(0, 3);
 
-  // Cross-interview trend: for each signal, look at how it scored in past
-  // sessions (history, oldest first) and append today's rating. Skips a
-  // signal entirely if there's no past data for it, or if it's never once
-  // been weak (nothing to track). "Recurring" = weak in today's session AND
-  // the immediately preceding session(s) — not necessarily every session
-  // ever, which would be too strict to be useful after just a few weak
-  // sessions in a row.
-  const signalTrends = d.skill_analysis
-    .map((skill) => {
-      const pastPoints = history
-        .filter((h) => h.skill_analysis.some((s) => s.parameter_id === skill.parameter_id))
-        .map((h) => ({
-          label: new Date(h.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-          rating: h.skill_analysis.find((s) => s.parameter_id === skill.parameter_id)!.rating,
-          isCurrent: false,
-        }));
-      if (pastPoints.length === 0) return null;
-      if (skill.rating > 3 && pastPoints.every((p) => p.rating > 3)) return null; // never a problem — nothing to surface
-      const points = [...pastPoints, { label: "Today", rating: skill.rating, isCurrent: true }];
-      let streak = 0;
-      for (let i = points.length - 1; i >= 0 && points[i].rating <= 3; i--) streak++;
-      // "Improving" = actually better than the most recent prior session —
-      // real week-over-week progress, regardless of absolute level.
-      // "Recurring" = weak for 2+ sessions running AND not improving — a
-      // signal that's stuck or declining, not one that's on its way out of
-      // the weak zone. The two are mutually exclusive by design: getting
-      // better shouldn't read as "still a pattern."
-      const improving = skill.rating > pastPoints[pastPoints.length - 1].rating;
-      return {
-        parameter_id: skill.parameter_id,
-        points,
-        recurring: streak >= 2 && !improving,
-        streak,
-        improving,
-      };
-    })
-    .filter((t): t is NonNullable<typeof t> => t !== null);
+  // Cross-interview trend — see lib/signals.ts for the shared math (also
+  // used account-wide by the /progress dashboard).
+  const signalTrends = computeSignalTrends(d.skill_analysis, history, "Today");
 
   return (
     <div className="max-w-2xl mx-auto pb-16 space-y-12">
@@ -573,6 +519,9 @@ export function DebriefReportView({
           <span>·</span>
           <span>{session.user_email}</span>
         </div>
+        <p className="text-xs text-gray-400 leading-relaxed max-w-md">
+          A &ldquo;signal&rdquo; is anything in your answer that tells an interviewer whether you&apos;re a fit — a clear story, a real number, how you handle pushback. This report scores 8 of them.
+        </p>
       </div>
 
       {/* Verdict Banner — deliberately NOT sticky: a `sticky` element here has
@@ -586,6 +535,7 @@ export function DebriefReportView({
           <span className={`inline-flex items-center px-4 py-1.5 rounded-full text-sm font-semibold border ${rStyle.bg} ${rStyle.text} ${rStyle.border}`}>
             {d.summary.recommendation}
           </span>
+          <p className="mt-2 text-xs text-gray-400">This is our read on a practice round — not a real hiring decision.</p>
         </div>
         {/* overall_impression is written in the interviewer's own first-person
             voice (see lib/groq.ts prompt) — the verdict they'd actually say
@@ -605,7 +555,7 @@ export function DebriefReportView({
       <nav aria-label="Jump to section" className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
         {[
           { href: "risks", label: "What Helped / Hurt", shown: topStrengthSignals.length > 0 || priorityRisks.length > 0 },
-          { href: "moments", label: "Moments That Cost You Signal", shown: modelAnswers.length > 0 },
+          { href: "moments", label: "Moments That Hurt You", shown: modelAnswers.length > 0 },
           { href: "signal-analysis", label: "Signal Analysis", shown: true },
           { href: "pattern", label: "Recurring Pattern", shown: signalTrends.length > 0 },
           { href: "metrics", label: "Conversational Metrics", shown: true },
@@ -719,7 +669,7 @@ export function DebriefReportView({
         <div id="moments" className="space-y-6 scroll-mt-20">
           <SectionHeading
             n="03"
-            title="Moments That Cost You Signal"
+            title="Moments That Hurt You"
             sub="The exact moments behind your biggest risks — what you said, what it likely signaled, and what a stronger version sounds like."
           />
           <div className="space-y-5">
@@ -777,7 +727,7 @@ export function DebriefReportView({
         <SectionHeading
           n="04"
           title="Signal Analysis"
-          sub="The 8 BARS-scored signals behind the sections above, each backed by verbatim evidence. Expand any for the full detail."
+          sub="The 8 signals behind the sections above, each backed by a direct quote from what you said. Expand any for the full detail."
         />
         <div className="space-y-3">
           {d.skill_analysis.map((skill) => {
@@ -939,7 +889,7 @@ export function DebriefReportView({
         </div>
         {d.behavioral_insights?.red_flags?.length > 0 && (
           <div className="space-y-2">
-            <h3 className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">Red Flags</h3>
+            <h3 className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">Where This Could Cost You</h3>
             <ul className="space-y-1.5">
               {d.behavioral_insights.red_flags.map((flag, i) => (
                 <li key={i} className="flex gap-2 text-sm text-red-700">

@@ -204,9 +204,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ debrief: inserted[0] });
   } catch (err) {
     console.error("[POST /api/interview/debrief]", err);
-    return NextResponse.json(
-      { error: "Failed to generate debrief" },
-      { status: 500 }
-    );
+    // Only ever surface our own known-safe, user-facing retry messages from
+    // generateDebrief (truncated/malformed/incomplete LLM response) — never
+    // an arbitrary caught error's message, which could leak internals (DB
+    // errors, stack details, etc.). Everything else stays the generic message.
+    const KNOWN_SAFE_MESSAGES = new Set([
+      "The report generation ran out of room and was cut off — please try again.",
+      "The report came back malformed — please try again.",
+      "The report came back incomplete — please try again.",
+    ]);
+    const message =
+      err instanceof Error && KNOWN_SAFE_MESSAGES.has(err.message)
+        ? err.message
+        : "Failed to generate debrief";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

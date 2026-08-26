@@ -296,7 +296,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     }
 
     if (!answerText || answerText.trim().length < 50) {
-      setError("Please give a more complete answer (at least 50 characters) before continuing.");
+      setError("Try giving a bit more detail — even a couple of sentences helps us score this fairly.");
       setRoomState("listening");
       startSTT();
       await startRecording();
@@ -452,6 +452,9 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
             </div>
             <p className="text-xl leading-relaxed text-white/90 font-light">
               &ldquo;Before we begin, tell me about yourself — your current role, key experience, and what you&apos;re looking to achieve.&rdquo;
+            </p>
+            <p className="text-xs text-white/30 max-w-sm">
+              Quick heads up: this is just practice — nothing here affects a real job. Your camera is only for you to see yourself; it&apos;s never recorded or sent anywhere. Only your spoken answers are used to generate your feedback.
             </p>
           </div>
 
