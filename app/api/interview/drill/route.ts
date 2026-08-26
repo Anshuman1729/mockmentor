@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { assertSessionOwner } from "@/lib/session-auth";
 import { sql } from "@/lib/db";
 import { scoreDrillAttempt } from "@/lib/groq";
+import { track, stableInsertId } from "@/lib/analytics";
 
 const VALID_SIGNALS = new Set([
   "TECHNICAL_DEPTH", "PROBLEM_SOLVING", "STAR_ALIGNMENT", "COMMUNICATION_SNR",
@@ -50,6 +52,19 @@ export async function POST(req: NextRequest) {
       role: session.role,
       company: session.company,
     });
+
+    // $insert_id is content-derived (not random): an exact-duplicate retry
+    // of the same attempt dedupes, but a genuinely different attempt on the
+    // same question/signal still counts as its own event.
+    const { userId } = await auth();
+    if (userId) {
+      track("drill_used", userId, {
+        parameter_id,
+        original_rating,
+        new_rating: result.rating,
+        $insert_id: stableInsertId(sessionId, parameter_id, attempt_answer.trim()),
+      });
+    }
 
     return NextResponse.json({ new_rating: result.rating, new_reasoning: result.reasoning });
   } catch (err) {

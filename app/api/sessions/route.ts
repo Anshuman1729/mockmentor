@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
+import { track, setProfile } from "@/lib/analytics";
 
 export async function GET(_req: NextRequest) {
   try {
@@ -57,11 +58,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const priorSessions = await sql`
+      SELECT COUNT(*) FROM sessions WHERE user_email = ${user_email}
+    `;
+    const sessionNumber = Number(priorSessions[0].count) + 1;
+
     const rows = await sql`
       INSERT INTO sessions (user_email, role, company, yoe, round_type, jd_content, background, company_stage, domain)
       VALUES (${user_email}, ${role}, ${company}, ${Number(yoe)}, ${round_type}, ${jd_content}, ${background ?? null}, ${company_stage ?? null}, ${domain ?? null})
       RETURNING id
     `;
+
+    // distinct_id is Clerk's stable userId, not user_email (emails can
+    // change and would fragment the Mixpanel profile). session_number lets
+    // Mixpanel compute return-usage (session_number >= 2) directly from this
+    // one event, no separate "return session" event needed. $insert_id
+    // guards against a double-fire if the client retries session creation.
+    track("session_started", userId, {
+      role, company, round_type,
+      company_stage,
+      domain,
+      session_number: sessionNumber,
+      $insert_id: rows[0].id,
+    });
+    // Infrequent write so the user reads as their email in the Mixpanel UI
+    // instead of a bare Clerk ID — not called on every event.
+    setProfile(userId, { $email: user_email });
 
     return NextResponse.json({ sessionId: rows[0].id });
   } catch (err) {

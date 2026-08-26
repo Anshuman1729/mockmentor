@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { assertSessionOwner } from "@/lib/session-auth";
 import { sql } from "@/lib/db";
 import { generateDebrief } from "@/lib/groq";
 import { sendDebriefEmail } from "@/lib/email";
 import { calculateNormalizedScore } from "@/lib/rubric-researched";
 import { checkFatalFlag } from "@/lib/fatal-flag";
+import { track, stableInsertId } from "@/lib/analytics";
 
 export async function POST(req: NextRequest) {
   try {
     const { sessionId } = await req.json();
     const authCheck = await assertSessionOwner(sessionId);
     if (!authCheck.ok) return authCheck.response;
+    const { userId } = await auth();
 
     if (!sessionId) {
       return NextResponse.json({ error: "sessionId is required" }, { status: 400 });
@@ -182,6 +185,17 @@ export async function POST(req: NextRequest) {
     await sql`
       UPDATE sessions SET status = 'completed', updated_at = NOW() WHERE id = ${sessionId}
     `;
+
+    // Bucketed recommendation only — never hire_probability or raw signal
+    // scores, per the non-negotiable rule against exposing the % anywhere,
+    // including to a third-party analytics vendor. Value is lowercased/
+    // snake_cased for the analytics property per Mixpanel's enum convention;
+    // the Title Case UI copy in debrief.summary.recommendation is untouched.
+    track("session_completed", userId ?? session.user_email, {
+      round_type: session.round_type,
+      recommendation: debrief.summary.recommendation.toLowerCase().replace(/\s+/g, "_"),
+      $insert_id: stableInsertId(sessionId, "session_completed"),
+    });
 
     // Log calibration loop (actual_outcome and discrepancy_score filled later via outcome API)
     await sql`
