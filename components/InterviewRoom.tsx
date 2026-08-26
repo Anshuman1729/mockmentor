@@ -459,7 +459,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
           </div>
 
           <div
-            className="absolute bottom-4 right-4 w-32 h-24 sm:w-44 sm:h-32 rounded-2xl overflow-hidden border border-white/20 bg-gray-800 shadow-2xl"
+            className="absolute top-4 right-4 w-32 h-24 sm:w-44 sm:h-32 rounded-2xl overflow-hidden border border-white/20 bg-gray-800 shadow-2xl"
             aria-hidden="true"
           >
             {cameraAllowed === false ? (
@@ -699,7 +699,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
 
         {/* User camera — PiP corner tile (self-view only, no unique info for screen readers) */}
         <div
-          className="absolute bottom-4 right-4 w-32 h-24 sm:w-44 sm:h-32 rounded-2xl overflow-hidden border border-white/20 bg-gray-800 shadow-2xl"
+          className="absolute top-4 right-4 w-32 h-24 sm:w-44 sm:h-32 rounded-2xl overflow-hidden border border-white/20 bg-gray-800 shadow-2xl"
           aria-hidden="true"
         >
           {cameraAllowed === false ? (
