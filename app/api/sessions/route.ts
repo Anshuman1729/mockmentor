@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { sql } from "@/lib/db";
+import { track } from "@/lib/analytics";
 
 export async function GET(_req: NextRequest) {
   try {
@@ -57,11 +58,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const priorSessions = await sql`
+      SELECT COUNT(*) FROM sessions WHERE user_email = ${user_email}
+    `;
+    const sessionNumber = Number(priorSessions[0].count) + 1;
+
     const rows = await sql`
       INSERT INTO sessions (user_email, role, company, yoe, round_type, jd_content, background, company_stage, domain)
       VALUES (${user_email}, ${role}, ${company}, ${Number(yoe)}, ${round_type}, ${jd_content}, ${background ?? null}, ${company_stage ?? null}, ${domain ?? null})
       RETURNING id
     `;
+
+    // session_number lets Mixpanel compute return-usage (session_number >= 2)
+    // directly from this one event, no separate "return session" event needed.
+    track("session_started", user_email, {
+      role, company, round_type,
+      company_stage: company_stage ?? null,
+      domain: domain ?? null,
+      session_number: sessionNumber,
+    });
 
     return NextResponse.json({ sessionId: rows[0].id });
   } catch (err) {

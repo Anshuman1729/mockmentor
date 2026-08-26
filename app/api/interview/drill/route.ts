@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { assertSessionOwner } from "@/lib/session-auth";
 import { sql } from "@/lib/db";
 import { scoreDrillAttempt } from "@/lib/groq";
+import { track } from "@/lib/analytics";
 
 const VALID_SIGNALS = new Set([
   "TECHNICAL_DEPTH", "PROBLEM_SOLVING", "STAR_ALIGNMENT", "COMMUNICATION_SNR",
@@ -49,6 +51,15 @@ export async function POST(req: NextRequest) {
       attempt_answer,
       role: session.role,
       company: session.company,
+    });
+
+    const { userId } = await auth();
+    const user = await currentUser();
+    const user_email = user?.emailAddresses[0]?.emailAddress ?? `${userId}@clerk.dev`;
+    track("drill_used", user_email, {
+      parameter_id,
+      original_rating,
+      new_rating: result.rating,
     });
 
     return NextResponse.json({ new_rating: result.rating, new_reasoning: result.reasoning });

@@ -5,6 +5,7 @@ import { generateDebrief } from "@/lib/groq";
 import { sendDebriefEmail } from "@/lib/email";
 import { calculateNormalizedScore } from "@/lib/rubric-researched";
 import { checkFatalFlag } from "@/lib/fatal-flag";
+import { track } from "@/lib/analytics";
 
 export async function POST(req: NextRequest) {
   try {
@@ -182,6 +183,14 @@ export async function POST(req: NextRequest) {
     await sql`
       UPDATE sessions SET status = 'completed', updated_at = NOW() WHERE id = ${sessionId}
     `;
+
+    // Bucketed recommendation only — never hire_probability or raw signal
+    // scores, per the non-negotiable rule against exposing the % anywhere,
+    // including to a third-party analytics vendor.
+    track("session_completed", session.user_email, {
+      round_type: session.round_type,
+      recommendation: debrief.summary.recommendation,
+    });
 
     // Log calibration loop (actual_outcome and discrepancy_score filled later via outcome API)
     await sql`

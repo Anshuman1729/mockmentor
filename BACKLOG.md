@@ -218,11 +218,16 @@ Playwright and reporting back real UX friction — not just self-review.
 
 ## 📋 Engagement Loop: Competence-Based Gamification (Blocked on Analytics)
 
-### Prerequisite: Product Analytics / Event Tracking
-- **Why**: Codebase has zero event-level analytics — checked `app/api/sessions/analytics/route.ts`, it re-derives trends from `sessions`/`debriefs` at read time; nothing is tracked as an event anywhere. Any retention/engagement hypothesis below is unfalsifiable without this.
-- **Scope (undecided — needs its own PRD before building)**: pick an approach (lightweight custom `events` table vs. a tool like PostHog), instrument at minimum: session start, session complete, debrief viewed, drill-loop used, return session (2nd+ completed session by the same `user_email`).
-- **Complexity**: TBD — depends on build-vs-buy decision
-- **Status**: Not started. Blocks the item below.
+### Prerequisite: Product Analytics / Event Tracking ✅ Done (2026-08-26)
+- **Why**: Codebase had zero event-level analytics — `app/api/sessions/analytics/route.ts` only re-derives trends from `sessions`/`debriefs` at read time. Any retention/engagement hypothesis is unfalsifiable without this.
+- **Decision**: Mixpanel free tier over GA4 — GA4 is traffic/marketing-attribution first (and `@vercel/analytics`, already installed, already covers pageviews for free); Mixpanel is purpose-built for funnels/retention/cohorts on custom events tied to a user ID, which is what the return-rate hypothesis actually needs.
+- **Implementation**: `lib/analytics.ts` — lazy-init wrapper (`MIXPANEL_TOKEN` env var) matching the `lib/groq.ts`/`lib/db.ts` convention; `track()` never throws, so a missing token or Mixpanel outage silently drops events instead of breaking the product. Server-side only, no client-side script.
+  - `session_started` — `POST /api/sessions`, includes `session_number` (so return-usage is queryable directly from this one event, no separate "return session" event needed)
+  - `session_completed` — `POST /api/interview/debrief`, `{ round_type, recommendation }` only — never `hire_probability` or raw signal scores, per the non-negotiable rule; that number doesn't leave this app for a third-party vendor either
+  - `drill_used` — `POST /api/interview/drill`, `{ parameter_id, original_rating, new_rating }`
+- **Baseline**: `npm run analytics:baseline` (`scripts/analytics-baseline.mjs`) computes return-usage and completion-funnel numbers from existing DB rows retroactively — a real "before" number without waiting for new events to accumulate. No historical drill-usage data exists (the drill loop is intentionally ephemeral/no DB write), so that one starts at zero going forward.
+- **Still needed before this is actually live**: a real `MIXPANEL_TOKEN` (free account signup) in `.env.local`/Vercel env — not created in this session, no way to verify events actually land in a live Mixpanel project from here.
+- **Status**: Code complete, typecheck/lint/vitest clean. Unblocks the item below once a token is added and a baseline run.
 
 ### Feature: Rings / Referral / Help-Credit Loop (Discovery stage complete, paused here)
 Surfaced from a product-design discussion (2026-08-26): PrepSignals has no return mechanic today — one session, one debrief, nothing pulls the user back. Discussed and refined into a specific proposal, grounded in the `product-design-principles` skill's gamification research (Sailer et al. 2017 — engagement mechanics build autonomy/relatedness but not competence, which is the thing this product should actually build).
