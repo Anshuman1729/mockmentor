@@ -136,6 +136,88 @@ export const INTERVIEW_RUBRIC: Record<string, SignalParameter> = {
 };
 
 /**
+ * SIGNAL → FRAMEWORK LOOKUP (Finding #4, consolidated per direct user feedback
+ * on the first version of this table)
+ * Deterministic, not LLM-generated — same philosophy as hire_probability.
+ * Surfaced in the UI for any signal rated <=3, so every "you're weak here"
+ * comes with a concrete "here's the structure to fix it" rather than just
+ * an observation with no path forward.
+ *
+ * The first version of this table gave every signal its own named
+ * framework (8 total) — direct product feedback called that out as too
+ * much to hold in your head walking into an interview ("having six
+ * different frameworks" vs. something memorable under pressure). This
+ * version collapses to exactly 3 canonical frameworks, reused across
+ * signals by question type:
+ *   - ANSWER_EVIDENCE_IMPACT: general/communication-style answers
+ *   - SITUATION_ACTION_RESULT: behavioral/story answers (simplified STAR)
+ *   - ANSWER_REASONING_TRADEOFF: analytical/technical answers
+ * `generateDebrief`'s model_answers[].framework must name one of these
+ * three (see FEW_SHOT_EXAMPLES in lib/groq.ts) so the LLM's rewritten
+ * answers stay consistent with what's taught here.
+ */
+export interface CanonicalFramework {
+  name: string;
+  steps: string[];
+}
+
+export const CANONICAL_FRAMEWORKS = {
+  ANSWER_EVIDENCE_IMPACT: {
+    name: "Answer → Evidence → Impact",
+    steps: ["Lead with the answer or conclusion in one sentence", "Back it with the specific evidence — what you actually did", "Close with the measurable impact — a number, not just an outcome"],
+  },
+  SITUATION_ACTION_RESULT: {
+    name: "Situation → Action → Result",
+    steps: ["Situation — the context, in one or two sentences", "Action — what you specifically did, in first person", "Result — a quantified outcome, or the closest honest approximation"],
+  },
+  ANSWER_REASONING_TRADEOFF: {
+    name: "Answer → Reasoning → Trade-off",
+    steps: ["State your answer or approach first", "Explain the reasoning behind it", "Name the trade-off you accepted or the alternative you rejected"],
+  },
+} as const satisfies Record<string, CanonicalFramework>;
+
+export interface SignalFramework {
+  name: string;        // one of the 3 CANONICAL_FRAMEWORKS names
+  steps: string[];     // the structure, in order (from the canonical framework)
+  howToApply: string;  // one line connecting the framework to this specific signal
+}
+
+export const SIGNAL_FRAMEWORKS: Record<string, SignalFramework> = {
+  TECHNICAL_DEPTH: {
+    ...CANONICAL_FRAMEWORKS.ANSWER_REASONING_TRADEOFF,
+    howToApply: "Most answers stop at the answer itself. The reasoning and the trade-off are what separate a proficient answer from an exceptional one — they're what an interviewer can't get from a resume.",
+  },
+  PROBLEM_SOLVING: {
+    ...CANONICAL_FRAMEWORKS.ANSWER_REASONING_TRADEOFF,
+    howToApply: "Jumping straight to a solution reads as rigid. Naming your reasoning — even briefly — is what signals strategic thinking under uncertainty.",
+  },
+  EDGE_CASE_MASTERY: {
+    ...CANONICAL_FRAMEWORKS.ANSWER_REASONING_TRADEOFF,
+    howToApply: "Waiting for the interviewer to ask 'what if X fails' reads as reactive. Naming a failure mode as part of your reasoning, before they ask, is what reads as senior.",
+  },
+  STAR_ALIGNMENT: {
+    ...CANONICAL_FRAMEWORKS.SITUATION_ACTION_RESULT,
+    howToApply: "The Result step is almost always the weakest part. If you can't attach a number, attach a comparison ('faster than before', 'fewer than the prior approach') instead of leaving it open-ended.",
+  },
+  OWNERSHIP_ETHICS: {
+    ...CANONICAL_FRAMEWORKS.SITUATION_ACTION_RESULT,
+    howToApply: "Ownership reads clearest when the Action step describes acting before being asked, and when you own a mistake in first person instead of describing it passively.",
+  },
+  ADAPTABILITY_GROWTH: {
+    ...CANONICAL_FRAMEWORKS.SITUATION_ACTION_RESULT,
+    howToApply: "Interviewers are listening for a specific adjustment, not just 'I learned a lot'. Make the Action step the one concrete thing you changed, not a general lesson.",
+  },
+  COMMUNICATION_SNR: {
+    ...CANONICAL_FRAMEWORKS.ANSWER_EVIDENCE_IMPACT,
+    howToApply: "Burying the answer inside a longer story forces the interviewer to extract it themselves. Say the conclusion first, then justify it — that's what this framework is for here.",
+  },
+  RESULT_ORIENTATION: {
+    ...CANONICAL_FRAMEWORKS.ANSWER_EVIDENCE_IMPACT,
+    howToApply: "Describing the evidence without the impact number is the single most common gap. Even a rough estimate ('roughly halved') is stronger than no number at all.",
+  },
+};
+
+/**
  * CALCULATOR LOGIC (Vibe-Proofing)
  * Normalizes scores by Weight and applies Seniority Modifiers.
  */

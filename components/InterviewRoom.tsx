@@ -7,6 +7,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { useTTS } from "@/hooks/useTTS";
 import { useSTT } from "@/hooks/useSTT";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
+import { VoiceOrb } from "@/components/VoiceOrb";
+import DebriefLoadingScreen from "@/components/DebriefLoadingScreen";
+import { Mic } from "lucide-react";
 
 type RoomState =
   | "init"
@@ -15,7 +18,8 @@ type RoomState =
   | "speaking"
   | "listening"
   | "submitting"
-  | "generating-debrief";
+  | "generating-debrief"
+  | "debrief-failed";
 
 interface QuestionState {
   questionId: string;
@@ -31,63 +35,9 @@ interface SessionInfo {
   background: string | null;
 }
 
-const DEBRIEF_MESSAGES = [
-  { label: "Reading your transcript", sub: "Pulling everything you said into context…"          },
-  { label: "Extracting signal",       sub: "Finding what landed and what fell flat…"             },
-  { label: "Checking the evidence",   sub: "Pinning scores to verbatim quotes from your answers…"},
-  { label: "Writing your feedback",   sub: "Turning scores into specific, actionable notes…"    },
-  { label: "Compiling your report",   sub: "Almost there — putting it all together…"            },
-];
-
-function DebriefLoadingScreen() {
-  const [idx, setIdx] = useState(0);
-  const [visible, setVisible] = useState(true);
-
-  useEffect(() => {
-    const cycle = setInterval(() => {
-      // Fade out, advance, fade in
-      setVisible(false);
-      setTimeout(() => {
-        setIdx((i) => (i + 1) % DEBRIEF_MESSAGES.length);
-        setVisible(true);
-      }, 300);
-    }, 2500);
-    return () => clearInterval(cycle);
-  }, []);
-
-  const msg = DEBRIEF_MESSAGES[idx];
-
-  return (
-    <div className="fixed inset-0 bg-gray-950 flex flex-col items-center justify-center gap-8 text-white z-50 px-6">
-      {/* Spinner */}
-      <div className="w-12 h-12 border-4 border-gray-700 border-t-white rounded-full animate-spin" />
-
-      {/* Cycling message */}
-      <div
-        className="text-center space-y-2 transition-opacity duration-300"
-        style={{ opacity: visible ? 1 : 0 }}
-      >
-        <p className="text-lg font-semibold tracking-tight">{msg.label}</p>
-        <p className="text-sm text-gray-400 max-w-xs">{msg.sub}</p>
-      </div>
-
-      {/* Progress dots */}
-      <div className="flex gap-1.5">
-        {DEBRIEF_MESSAGES.map((_, i) => (
-          <span
-            key={i}
-            className="w-1.5 h-1.5 rounded-full transition-colors duration-300"
-            style={{ background: i === idx ? "#ffffff" : "#374151" }}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export default function InterviewRoom({ sessionId }: { sessionId: string }) {
   const router = useRouter();
-  const { speak, cancel: cancelTTS, isSpeaking, rate, cycleRate, muted, toggleMute } = useTTS();
+  const { speak, cancel: cancelTTS, isSpeaking, rate, cycleRate, muted, toggleMute, analyserRef: ttsAnalyserRef } = useTTS();
   const {
     start: startSTT,
     stop: stopSTT,
@@ -99,7 +49,8 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     hasNetworkError: sttNetworkError,
   } = useSTT();
 
-  const { startRecording, stopRecording, discardRecording, isRecording } = useAudioRecorder();
+  const { startRecording, stopRecording, discardRecording, isRecording, analyserRef: micAnalyserRef } = useAudioRecorder();
+  const idleAnalyserRef = useRef<AnalyserNode | null>(null);
 
   const [roomState, setRoomState] = useState<RoomState>("init");
   const [current, setCurrent] = useState<QuestionState | null>(null);
@@ -165,12 +116,46 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     }
   }, [roomState, sttSupported, isListening, isSpeaking, sttNetworkError, startSTT]);
 
+  // ── Debrief generation — isolated from question-fetch so a failure here
+  // never gets treated as "submit another answer to retry" (that was the
+  // bug: both used to share one catch block, silently landing back in
+  // "listening" with no way to retry debrief generation except answering
+  // an already-finished interview again). Exposed as its own callback so
+  // the debrief-failed screen can call it directly to retry.
+  const generateDebrief = useCallback(async () => {
+    setRoomState("generating-debrief");
+    setError(null);
+    try {
+      // Flush candidate_questions_asked before generating debrief (#11)
+      await fetch(`/api/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidate_questions_asked: candidateQuestions }),
+      }).catch(() => {/* non-fatal */});
+
+      const dr = await fetch("/api/interview/debrief", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+      const dd = await dr.json();
+      if (!dr.ok) throw new Error(dd.error ?? "Failed to generate debrief");
+      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+      router.push(`/debrief/${sessionId}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate your debrief");
+      setRoomState("debrief-failed");
+    }
+  }, [sessionId, router, candidateQuestions]);
+
   // ── Fetch question → speak → listen ─────────────────────────────────────────
   const fetchNextQuestion = useCallback(async () => {
     setRoomState("loading-question");
     setError(null);
     resetSTT();
     setFallbackText("");
+
+    let q: QuestionState | null = null;
 
     try {
       const res = await fetch("/api/interview/question", {
@@ -182,46 +167,44 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       if (!res.ok) throw new Error(data.error ?? "Failed to load question");
 
       if (data.done) {
-        // Flush candidate_questions_asked before generating debrief (#11)
-        await fetch(`/api/sessions/${sessionId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ candidate_questions_asked: candidateQuestions }),
-        }).catch(() => {/* non-fatal */});
-
-        setRoomState("generating-debrief");
-        const dr = await fetch("/api/interview/debrief", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId }),
-        });
-        const dd = await dr.json();
-        if (!dr.ok) throw new Error(dd.error ?? "Failed to generate debrief");
-        if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
-        router.push(`/debrief/${sessionId}`);
+        await generateDebrief();
         return;
       }
 
-      const q: QuestionState = {
+      q = {
         questionId: data.questionId,
         question: data.question,
         questionNumber: data.questionNumber,
         total: data.total,
       };
       setCurrent(q);
-      setRoomState("speaking");
-      await speak(q.question);
-      setRoomState("listening");
-      answerStartTimeRef.current = Date.now();
-      startSTT();
-      await startRecording();
     } catch (err) {
+      // A real fetch failure — the question genuinely wasn't generated.
+      // This is the only path that should treat things as "try again".
       setError(err instanceof Error ? err.message : "Something went wrong");
       setRoomState("listening");
       startSTT();
       await startRecording();
+      return;
     }
-  }, [sessionId, router, speak, resetSTT, startSTT, startRecording]);
+
+    // The question is loaded and already visible on screen at this point.
+    // Speaking it is a separate concern — if TTS fails (bad audio, network,
+    // provider hiccup) that must NOT look like "no question was generated":
+    // don't refetch, just surface a message and let the user read it or hit
+    // 🔊 Replay to retry the audio.
+    setRoomState("speaking");
+    try {
+      await speak(q.question);
+    } catch (speakErr) {
+      console.error("[TTS] speak failed:", speakErr);
+      setError("Voice playback failed — read the question below, or tap 🔊 Replay to try again.");
+    }
+    setRoomState("listening");
+    answerStartTimeRef.current = Date.now();
+    startSTT();
+    await startRecording();
+  }, [sessionId, speak, resetSTT, startSTT, startRecording, generateDebrief]);
 
   // Load session on mount — show TMAY step if no background, else load first question
   useEffect(() => {
@@ -237,7 +220,17 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
         setSessionInfo(s);
         if (!s.background) {
           setRoomState("tmay");
-          await speak("Before we begin, tell me a bit about yourself — your current role, key experience, and what you're looking to achieve.");
+          // A TTS failure here must stay a TMAY-step problem, not escape to
+          // the outer catch below — that catch is for session-load failures
+          // and calls fetchNextQuestion(), which would silently skip the
+          // TMAY step (and lose the background-collection step) instead of
+          // just failing to voice the intro prompt.
+          try {
+            await speak("Before we begin, tell me a bit about yourself — your current role, key experience, and what you're looking to achieve.");
+          } catch (speakErr) {
+            console.error("[TTS] speak failed on TMAY intro:", speakErr);
+            if (!cancelled) setError("Voice playback failed — read the prompt below, then answer when ready.");
+          }
           if (cancelled) return;
           startSTT();
           await startRecording();
@@ -404,7 +397,15 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     stopSTT();
     discardRecording();
     setRoomState("speaking");
-    await speak(current.question);
+    // Same reasoning as fetchNextQuestion: a TTS failure here must not leave
+    // the room stuck on "speaking" forever — always fall through to
+    // listening so the user isn't stranded with a frozen UI and no recovery.
+    try {
+      await speak(current.question);
+    } catch (speakErr) {
+      console.error("[TTS] speak failed on replay:", speakErr);
+      setError("Voice playback failed — read the question below, or tap 🔊 Replay to try again.");
+    }
     setRoomState("listening");
     startSTT();
     await startRecording();
@@ -424,39 +425,40 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
   if (roomState === "tmay") {
     return (
       <div className="fixed inset-0 bg-gray-950 flex flex-col text-white z-50 select-none">
-        <div className="flex-1 flex items-center justify-center relative overflow-hidden px-6">
+        <div className="flex-1 flex items-center justify-center relative overflow-hidden px-4 sm:px-6">
           <div className="flex flex-col items-center gap-6 text-center max-w-xl w-full">
             <div className="relative flex items-center justify-center w-28 h-28">
-              {isSpeaking && (
-                <>
-                  <span className="absolute inset-0 rounded-full border-2 border-blue-400 animate-ping opacity-30" />
-                  <span className="absolute inset-2 rounded-full border border-blue-400/50 animate-ping opacity-20" />
-                </>
-              )}
-              <span className={`text-6xl transition-transform duration-300 ${isSpeaking ? "scale-110" : "scale-100"}`}>
-                🤖
-              </span>
+              <VoiceOrb
+                analyserRef={isSpeaking ? ttsAnalyserRef : micAnalyserRef}
+                variant={isSpeaking ? "speaking" : "listening"}
+                size={112}
+              />
             </div>
             <div className="space-y-2">
               <p className="text-xs font-semibold text-gray-400 tracking-widest uppercase">AI Interviewer</p>
-              {isSpeaking ? (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/15 text-blue-300 text-xs font-medium">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                  Speaking
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-500/15 text-green-300 text-xs font-medium">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                  Your turn
-                </span>
-              )}
+              <div role="status" aria-live="polite">
+                {isSpeaking ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/15 text-blue-300 text-xs font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" aria-hidden="true" />
+                    Speaking
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-500/15 text-green-300 text-xs font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" aria-hidden="true" />
+                    Your turn
+                  </span>
+                )}
+              </div>
             </div>
             <p className="text-xl leading-relaxed text-white/90 font-light">
               &ldquo;Before we begin, tell me about yourself — your current role, key experience, and what you&apos;re looking to achieve.&rdquo;
             </p>
           </div>
 
-          <div className="absolute bottom-4 right-4 w-32 h-24 sm:w-44 sm:h-32 rounded-2xl overflow-hidden border border-white/20 bg-gray-800 shadow-2xl">
+          <div
+            className="absolute bottom-4 right-4 w-32 h-24 sm:w-44 sm:h-32 rounded-2xl overflow-hidden border border-white/20 bg-gray-800 shadow-2xl"
+            aria-hidden="true"
+          >
             {cameraAllowed === false ? (
               <div className="w-full h-full flex items-center justify-center">
                 <span className="text-xs text-gray-400 text-center px-2">Camera off</span>
@@ -468,32 +470,20 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
           </div>
         </div>
 
-        <div className="px-6 pb-3">
+        <div className="px-4 sm:px-6 pb-3">
           {sttSupported ? (
-            <div className="relative rounded-xl border border-white/10 bg-white/5 px-4 py-3 min-h-14">
-              {!isSpeaking && (
-                <span className="absolute top-2 right-3 text-xs text-yellow-400/60 uppercase tracking-wider font-mono">
-                  Rough Draft
-                </span>
-              )}
-              {(transcript + interimTranscript).trim() ? (
-                <p className="text-sm text-white/90 leading-relaxed pr-24">
-                  {transcript}
-                  {interimTranscript && <span className="text-white/40 italic">{interimTranscript}</span>}
-                </p>
-              ) : sttNetworkError && !isSpeaking ? (
+            <div className="relative rounded-xl border border-white/10 bg-white/5 px-4 py-3 min-h-14 flex items-center">
+              {!isSpeaking ? (
                 <div className="flex items-center gap-3 py-0.5">
-                  <span className="flex items-end gap-[3px] h-4 shrink-0">
+                  <span className="flex items-end gap-[3px] h-4 shrink-0" aria-hidden="true">
                     {[40, 80, 55, 90, 45].map((h, i) => (
-                      <span key={i} className="w-[3px] rounded-full bg-blue-400/60 animate-pulse" style={{ height: `${h}%`, animationDelay: `${i * 130}ms` }} />
+                      <span key={i} className="w-[3px] rounded-full bg-green-400/60 animate-pulse" style={{ height: `${h}%`, animationDelay: `${i * 130}ms` }} />
                     ))}
                   </span>
-                  <span className="text-sm text-white/50">Recording your answer <span className="text-xs text-white/25">— Whisper transcribes on submit</span></span>
+                  <span className="text-sm text-white/50">Listening — your answer is being captured<span className="text-xs text-white/25"> (transcribed accurately on submit)</span></span>
                 </div>
               ) : (
-                <p className="text-sm text-white/25 italic">
-                  {!isSpeaking ? "Introduce yourself — your role, experience, and goals…" : ""}
-                </p>
+                <p className="text-sm text-white/25 italic">Introduce yourself — your role, experience, and goals…</p>
               )}
             </div>
           ) : (
@@ -502,30 +492,31 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
               placeholder="Tell me about yourself — your role, experience, and what brings you here..."
               value={fallbackText}
               onChange={(e) => setFallbackText(e.target.value)}
+              aria-label="Tell me about yourself"
               className="resize-none bg-white/5 border-white/10 text-white placeholder:text-white/25 focus-visible:ring-blue-500"
             />
           )}
         </div>
 
-        {error && <p className="text-xs text-red-400 text-center px-6 pb-2">{error}</p>}
+        {error && <p role="alert" className="text-xs text-red-400 text-center px-4 sm:px-6 pb-2">{error}</p>}
 
-        <div className="flex flex-wrap items-center justify-between gap-y-2 px-6 py-4 border-t border-white/10 bg-black/30">
+        <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 sm:px-6 py-4 border-t border-white/10 bg-black/30">
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 min-w-24">
+            <div className="flex items-center gap-2 min-w-24" role="status" aria-live="polite">
               {sttSupported ? (
                 isListening ? (
                   <>
-                    <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" aria-hidden="true" />
                     <span className="text-green-300 text-xs font-medium">Listening</span>
                   </>
                 ) : isRecording ? (
                   <>
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse" aria-hidden="true" />
                     <span className="text-blue-300 text-xs font-medium">Recording answer</span>
                   </>
                 ) : (
                   <>
-                    <span className="w-2.5 h-2.5 rounded-full bg-gray-600" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-gray-600" aria-hidden="true" />
                     <span className="text-gray-500 text-xs">Mic off</span>
                   </>
                 )
@@ -538,6 +529,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
               size="sm"
               onClick={cycleRate}
               title="Interviewer voice speed"
+              aria-label={`Interviewer voice speed: ${rate}x. Click to change.`}
               className="text-white/60 hover:text-white hover:bg-white/10 text-xs h-8 px-2"
             >
               {rate}x
@@ -547,6 +539,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
               size="sm"
               onClick={toggleMute}
               title={muted ? "Unmute interviewer voice" : "Mute interviewer voice"}
+              aria-label={muted ? "Unmute interviewer voice" : "Mute interviewer voice"}
               className="text-white/60 hover:text-white hover:bg-white/10 text-xs h-8 px-2"
             >
               {muted ? "🔇" : "🔈"}
@@ -556,11 +549,11 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
             size="sm"
             onClick={handleTmaySubmit}
             disabled={tmaySubmitting || isSpeaking}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white px-6 h-8"
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white px-6 h-[44px] min-w-[100px]"
           >
             {tmaySubmitting ? (
               <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true" />
                 Saving…
               </span>
             ) : "Continue →"}
@@ -575,12 +568,57 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     return <DebriefLoadingScreen />;
   }
 
+  // ── Debrief failed — dedicated retry, not "answer another question" ──────────
+  if (roomState === "debrief-failed") {
+    return (
+      <div className="fixed inset-0 bg-gray-950 flex flex-col items-center justify-center gap-6 text-white z-50 px-4 sm:px-6 text-center">
+        <div className="w-14 h-14 rounded-full bg-red-500/15 flex items-center justify-center" aria-hidden="true">
+          <span className="text-2xl">⚠️</span>
+        </div>
+        <div className="space-y-2 max-w-sm" role="alert">
+          <p className="text-lg font-semibold tracking-tight">Couldn&apos;t generate your debrief</p>
+          <p className="text-sm text-gray-400">
+            {error ?? "Something went wrong while putting your report together."}
+          </p>
+        </div>
+        <Button
+          onClick={generateDebrief}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-6 h-[44px] min-w-[140px]"
+        >
+          Try again
+        </Button>
+      </div>
+    );
+  }
+
   // ── Room ─────────────────────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 bg-gray-950 flex flex-col text-white z-50 select-none">
+    <div className="fixed inset-0 bg-gradient-to-b from-gray-950 via-gray-900 to-gray-950 flex flex-col text-white z-50 select-none">
+      {/* Responsive top header — visible on all viewports */}
+      <header className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-white/10 bg-white/5 backdrop-blur">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
+            <Mic className="w-4 h-4 text-white" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold truncate">{sessionInfo?.role ?? "Mock Interview"}</p>
+            <p className="text-[11px] text-gray-400 truncate">{sessionInfo?.company ?? ""} · {sessionInfo?.round_type ?? ""}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-gray-400 flex-shrink-0">
+          <span className="px-2 py-0.5 rounded-full bg-white/10">{current?.questionNumber ?? 0}/{current?.total ?? 0}</span>
+        </div>
+      </header>
 
-      {/* Thin progress bar — no numbers, just visual progress */}
-      <div className="absolute top-0 left-0 right-0 h-0.5 bg-white/10 z-10">
+      {/* Thin progress bar — visual only */}
+      <div
+        className="absolute top-0 left-0 right-0 h-0.5 bg-white/10 z-10"
+        role="progressbar"
+        aria-label="Interview progress"
+        aria-valuenow={progressValue}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
         <div
           className="h-full bg-blue-500 transition-all duration-700"
           style={{ width: `${progressValue}%` }}
@@ -588,26 +626,30 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       </div>
 
       {/* ── Main area ── */}
-      <div className="flex-1 flex items-center justify-center relative overflow-hidden px-6">
+      <div className="flex-1 flex items-center justify-center relative overflow-hidden px-4 sm:px-6">
 
         {/* AI interviewer */}
         <div className="flex flex-col items-center gap-6 text-center max-w-xl w-full">
 
-          {/* Avatar with pulse when speaking */}
+          {/* Voice orb — audio-reactive: TTS output while speaking, mic input while listening */}
           <div className="relative flex items-center justify-center w-28 h-28">
-            {(roomState === "speaking" || isSpeaking) && (
-              <>
-                <span className="absolute inset-0 rounded-full border-2 border-blue-400 animate-ping opacity-30" />
-                <span className="absolute inset-2 rounded-full border border-blue-400/50 animate-ping opacity-20 animation-delay-150" />
-              </>
-            )}
-            <span
-              className={`text-6xl transition-transform duration-300 ${
-                isSpeaking ? "scale-110" : "scale-100"
-              }`}
-            >
-              🤖
-            </span>
+            <VoiceOrb
+              analyserRef={
+                roomState === "speaking" || isSpeaking
+                  ? ttsAnalyserRef
+                  : roomState === "listening"
+                  ? micAnalyserRef
+                  : idleAnalyserRef
+              }
+              variant={
+                roomState === "speaking" || isSpeaking
+                  ? "speaking"
+                  : roomState === "listening"
+                  ? "listening"
+                  : "idle"
+              }
+              size={112}
+            />
           </div>
 
           {/* Label + status pill */}
@@ -615,41 +657,48 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
             <p className="text-xs font-semibold text-gray-400 tracking-widest uppercase">
               AI Interviewer
             </p>
-            {roomState === "loading-question" ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-500/15 text-yellow-300 text-xs font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
-                Thinking…
-              </span>
-            ) : roomState === "speaking" || isSpeaking ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/15 text-blue-300 text-xs font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                Speaking
-              </span>
-            ) : roomState === "listening" ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-500/15 text-green-300 text-xs font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                Your turn
-              </span>
-            ) : roomState === "submitting" ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-500/15 text-orange-300 text-xs font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
-                Processing
-              </span>
-            ) : null}
+            <div role="status" aria-live="polite">
+              {roomState === "loading-question" ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-500/15 text-yellow-300 text-xs font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" aria-hidden="true" />
+                  Thinking…
+                </span>
+              ) : roomState === "speaking" || isSpeaking ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/15 text-blue-300 text-xs font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" aria-hidden="true" />
+                  Speaking
+                </span>
+              ) : roomState === "listening" ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-500/15 text-green-300 text-xs font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" aria-hidden="true" />
+                  Your turn
+                </span>
+              ) : roomState === "submitting" ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-500/15 text-orange-300 text-xs font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" aria-hidden="true" />
+                  Processing
+                </span>
+              ) : null}
+            </div>
           </div>
 
           {/* Question text */}
-          {roomState === "loading-question" ? (
-            <p className="text-gray-500 text-sm animate-pulse">Preparing next question…</p>
-          ) : current ? (
-            <p className="text-xl leading-relaxed text-white/90 font-light">
-              &ldquo;{current.question}&rdquo;
-            </p>
-          ) : null}
+          <div aria-live="polite">
+            {roomState === "loading-question" ? (
+              <p className="text-gray-500 text-sm animate-pulse">Preparing next question…</p>
+            ) : current ? (
+              <p className="text-xl leading-relaxed text-white/90 font-light">
+                &ldquo;{current.question}&rdquo;
+              </p>
+            ) : null}
+          </div>
         </div>
 
-        {/* User camera — PiP corner tile */}
-        <div className="absolute bottom-4 right-4 w-32 h-24 sm:w-44 sm:h-32 rounded-2xl overflow-hidden border border-white/20 bg-gray-800 shadow-2xl">
+        {/* User camera — PiP corner tile (self-view only, no unique info for screen readers) */}
+        <div
+          className="absolute bottom-4 right-4 w-32 h-24 sm:w-44 sm:h-32 rounded-2xl overflow-hidden border border-white/20 bg-gray-800 shadow-2xl"
+          aria-hidden="true"
+        >
           {cameraAllowed === false ? (
             <div className="w-full h-full flex items-center justify-center">
               <span className="text-xs text-gray-400 text-center px-2">Camera off</span>
@@ -668,36 +717,20 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       </div>
 
       {/* ── Transcript / answer ── */}
-      <div className="px-6 pb-3">
+      <div className="px-4 sm:px-6 pb-3">
         {sttSupported ? (
-          <div className="relative rounded-xl border border-white/10 bg-white/5 px-4 py-3 min-h-14">
-            {roomState === "listening" && (
-              <span className="absolute top-2 right-3 text-xs text-yellow-400/60 uppercase tracking-wider font-mono">
-                Rough Draft
-              </span>
-            )}
-            {(transcript + interimTranscript).trim() ? (
-              <p className="text-sm text-white/90 leading-relaxed pr-24">
-                {transcript}
-                {interimTranscript && (
-                  <span className="text-white/40 italic">{interimTranscript}</span>
-                )}
-              </p>
-            ) : sttNetworkError && roomState === "listening" ? (
+          <div className="relative rounded-xl border border-white/10 bg-white/5 px-4 py-3 min-h-14 flex items-center">
+            {roomState === "listening" ? (
               <div className="flex items-center gap-3 py-0.5">
-                <span className="flex items-end gap-[3px] h-4 shrink-0">
+                <span className="flex items-end gap-[3px] h-4 shrink-0" aria-hidden="true">
                   {[40, 80, 55, 90, 45].map((h, i) => (
-                    <span key={i} className="w-[3px] rounded-full bg-blue-400/60 animate-pulse" style={{ height: `${h}%`, animationDelay: `${i * 130}ms` }} />
+                    <span key={i} className="w-[3px] rounded-full bg-green-400/60 animate-pulse" style={{ height: `${h}%`, animationDelay: `${i * 130}ms` }} />
                   ))}
                 </span>
-                <span className="text-sm text-white/50">Recording your answer <span className="text-xs text-white/25">— Whisper transcribes on submit</span></span>
+                <span className="text-sm text-white/50">Listening — your answer is being captured<span className="text-xs text-white/25"> (transcribed accurately on submit)</span></span>
               </div>
             ) : (
-              <p className="text-sm text-white/25 italic">
-                {roomState === "listening"
-                  ? "Speak your answer — AI will transcribe accurately on submit…"
-                  : "Your answer will appear here."}
-              </p>
+              <p className="text-sm text-white/25 italic">Your answer will appear here.</p>
             )}
           </div>
         ) : (
@@ -707,35 +740,36 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
             value={fallbackText}
             onChange={(e) => setFallbackText(e.target.value)}
             disabled={roomState === "submitting"}
+            aria-label="Your answer"
             className="resize-none bg-white/5 border-white/10 text-white placeholder:text-white/25 focus-visible:ring-blue-500"
           />
         )}
       </div>
 
       {error && (
-        <p className="text-xs text-red-400 text-center px-6 pb-2">{error}</p>
+        <p role="alert" className="text-xs text-red-400 text-center px-4 sm:px-6 pb-2">{error}</p>
       )}
 
       {/* ── Controls bar ── */}
-      <div className="flex flex-wrap items-center justify-between gap-y-2 px-6 py-4 border-t border-white/10 bg-black/30">
+      <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 sm:px-6 py-4 border-t border-white/10 bg-black/30">
 
         {/* Mic indicator + interviewer voice controls */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 min-w-24">
+          <div className="flex items-center gap-2 min-w-24" role="status" aria-live="polite">
             {sttSupported ? (
               isListening ? (
                 <>
-                  <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" aria-hidden="true" />
                   <span className="text-green-300 text-xs font-medium">Listening</span>
                 </>
               ) : isRecording ? (
                 <>
-                  <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse" aria-hidden="true" />
                   <span className="text-blue-300 text-xs font-medium">Recording answer</span>
                 </>
               ) : (
                 <>
-                  <span className="w-2.5 h-2.5 rounded-full bg-gray-600" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-gray-600" aria-hidden="true" />
                   <span className="text-gray-500 text-xs">Mic off</span>
                 </>
               )
@@ -748,6 +782,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
             size="sm"
             onClick={cycleRate}
             title="Interviewer voice speed"
+            aria-label={`Interviewer voice speed: ${rate}x. Click to change.`}
             className="text-white/60 hover:text-white hover:bg-white/10 text-xs h-8 px-2"
           >
             {rate}x
@@ -757,6 +792,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
             size="sm"
             onClick={toggleMute}
             title={muted ? "Unmute interviewer voice" : "Mute interviewer voice"}
+            aria-label={muted ? "Unmute interviewer voice" : "Mute interviewer voice"}
             className="text-white/60 hover:text-white hover:bg-white/10 text-xs h-8 px-2"
           >
             {muted ? "🔇" : "🔈"}
@@ -771,9 +807,10 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
               size="sm"
               onClick={handleRespeak}
               disabled={isSpeaking}
+              aria-label="Replay the question audio"
               className="text-white/60 hover:text-white hover:bg-white/10 text-xs h-8"
             >
-              🔊 Replay
+              <span aria-hidden="true">🔊</span> Replay
             </Button>
           )}
 
@@ -782,9 +819,10 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
               variant="ghost"
               size="sm"
               onClick={handleRetry}
+              aria-label="Retry — re-record your answer"
               className="text-white/60 hover:text-white hover:bg-white/10 text-xs h-8"
             >
-              ↩ Retry
+              <span aria-hidden="true">↩</span> Retry
             </Button>
           )}
 
@@ -792,11 +830,11 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
             size="sm"
             onClick={handleSubmit}
             disabled={roomState === "submitting" || !canSubmit}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white px-6 h-8"
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white px-6 h-[44px] min-w-[100px]"
           >
             {roomState === "submitting" ? (
               <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true" />
                 Submitting…
               </span>
             ) : (

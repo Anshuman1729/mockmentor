@@ -62,10 +62,49 @@ export async function GET(
     const debriefRow = debriefs[0] ?? null;
     const debrief = debriefRow?.debrief_data ?? null;
 
+    // Cross-interview trend data (see DebriefReport.tsx "Your Recurring
+    // Pattern"): the same user's other completed, debriefed sessions, so a
+    // signal that's weak again can be flagged as a pattern instead of a
+    // one-off. Scoped to this user only, oldest first, capped at 10 so a
+    // long-time user doesn't drag in their entire history on every load.
+    const userEmail = sessions[0]?.user_email;
+    let history: Array<{
+      session_id: string;
+      date: string;
+      role: string;
+      company: string;
+      round_type: string;
+      skill_analysis: { parameter_id: string; rating: number }[];
+    }> = [];
+    if (userEmail) {
+      const pastRows = await sql`
+        SELECT s.id AS session_id, s.role, s.company, s.round_type, s.created_at, d.debrief_data
+        FROM sessions s
+        JOIN debriefs d ON d.session_id = s.id
+        WHERE s.user_email = ${userEmail} AND s.id != ${sessionId} AND s.status = 'completed'
+        ORDER BY s.created_at ASC
+        LIMIT 10
+      `;
+      history = pastRows
+        .filter((r) => Array.isArray(r.debrief_data?.skill_analysis))
+        .map((r) => ({
+          session_id: r.session_id,
+          date: r.created_at,
+          role: r.role,
+          company: r.company,
+          round_type: r.round_type,
+          skill_analysis: r.debrief_data.skill_analysis.map((s: { parameter_id: string; rating: number }) => ({
+            parameter_id: s.parameter_id,
+            rating: s.rating,
+          })),
+        }));
+    }
+
     return NextResponse.json({
       session: sessions[0],
       qas,
       debrief,
+      history,
     });
   } catch (err) {
     console.error("[GET /api/sessions/[sessionId]]", err);

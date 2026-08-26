@@ -12,7 +12,7 @@ function getClient(): Groq {
   return _client;
 }
 
-const MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
+const MODEL = "openai/gpt-oss-120b";
 
 export interface QAPair {
   question_number: number;
@@ -144,9 +144,15 @@ export async function generateNextQuestion(
     ? `\nCandidate Resume / Background:\n${session.background}\n`
     : "";
 
+  const lastAnswer = previousQAs.filter((qa) => qa.answer !== null).slice(-1)[0];
+
   const questionInstruction = isFirstQuestion
     ? `This is question 1 of ${totalTarget}. Ask an open-ended opener to understand who the candidate is — their current role, key experience, and what they're looking to do next. Make it feel natural and conversational, not a checklist. Do NOT ask a technical question yet.`
-    : `Target ${totalTarget} questions total. You have asked ${answeredCount} so far.`;
+    : `Target ${totalTarget} questions total. You have asked ${answeredCount} so far.
+
+This is a live discussion, not a checklist being read out loud. Before writing your next question, decide: does the candidate's last answer deserve a follow-up — a specific claim worth probing, a detail worth digging into, an assumption worth testing — or have you learned enough on this topic to move on?
+Default to following up at least once per topic. When you do follow up, reference something specific they actually said (quote or paraphrase it) — don't ask a generic pre-written question that ignores their answer.
+${lastAnswer ? `\nTheir last answer was: "${lastAnswer.answer}"` : ""}`;
 
   const roundInstructions = buildRoundInstructions(session.round_type);
   const difficultyInstruction = buildDifficultyInstruction(session.yoe);
@@ -171,11 +177,19 @@ ${difficultyInstruction}
 
 ${questionInstruction}
 ${seedSection}
+Ask exactly ONE question, and make it a single, self-contained ask — not several requirements stacked into one sentence via commas or "and" (e.g. don't ask for a design AND the implementation details AND the tradeoffs AND the failure handling all at once — that's four questions wearing one question mark). No bullet points, no numbered sub-parts. If there are several angles worth exploring, pick the single most important one now — you'll get another turn to follow up based on their answer.
+
 Output ONLY the next interview question. No preamble, no labels, no explanation.`;
 
   const completion = await getClient().chat.completions.create({
     model: MODEL,
-    max_tokens: 300,
+    max_tokens: 320,
+    // openai/gpt-oss-120b defaults to 'medium' reasoning effort, which burns
+    // hidden reasoning tokens out of the same max_tokens budget before ever
+    // emitting the visible answer — a low-complexity task like "write one
+    // interview question" doesn't need that, and at a tight token budget it
+    // can consume the whole budget and return an empty completion.
+    reasoning_effort: "low",
     messages: [
       { role: "system", content: systemPrompt },
       {
@@ -190,7 +204,10 @@ Output ONLY the next interview question. No preamble, no labels, no explanation.
 
 /**
  * Generate a domain-specific question when no seed exists for the user's domain.
- * Called only when: seed === null AND session.domain is set.
+ * Called only when: seed === null AND session.domain is set AND the round is
+ * a technical-style round (the caller gates this — see seedRoundType() in the
+ * question route). This function has no HR/behavioral awareness of its own,
+ * so it must never be reached for an HR screen or behavioral round.
  */
 export async function generateDomainQuestion(
   session: SessionContext,
@@ -210,30 +227,41 @@ export async function generateDomainQuestion(
     ? `\n[COMPANY CONTEXT]\n- Company stage: ${session.company_stage}\n- Seed/Series A companies prize ownership + breadth; Series B/Public companies prize depth + scalability.\n`
     : "";
 
+  const difficultyInstruction = buildDifficultyInstruction(session.yoe);
+
   const fewShotExamples = `
-[FEW-SHOT EXAMPLES — domain-specific depth]
+[FEW-SHOT EXAMPLES — for STYLE only: specific and scenario-grounded, not generic textbook trivia. NOT for required difficulty — these happen to be senior-level; scale actual complexity to the YOE guidance above, not to these examples.]
 
-Example 1 (Embedded/BMS, Technical):
-Q: "Walk me through how you'd design a State of Charge estimation algorithm for a lithium-ion battery pack. What are the tradeoffs between Coulomb counting and Extended Kalman Filter approaches, and when would you choose each?"
+Example 1 (Embedded/BMS, senior-level):
+Q: "Walk me through how you'd design a State of Charge estimation algorithm for a lithium-ion battery pack. What are the tradeoffs between Coulomb counting and Extended Kalman Filter approaches?"
 
-Example 2 (ML Infra, Technical):
-Q: "Your distributed training job is experiencing gradient staleness with async SGD across 64 GPUs. How do you diagnose whether this is a network bottleneck vs compute imbalance, and what architectural changes would you make?"
+Example 2 (ML Infra, senior-level):
+Q: "Your distributed training job is experiencing gradient staleness with async SGD across 64 GPUs. How do you diagnose whether this is a network bottleneck vs compute imbalance?"
+
+Example 3 (same ML Infra domain, junior-level — same specificity, far lower complexity):
+Q: "You're training a small model and notice the loss isn't decreasing after a few epochs. What's the first thing you'd check?"
 `;
 
   const completion = await getClient().chat.completions.create({
     model: MODEL,
-    max_tokens: 300,
+    max_tokens: 320,
+    // See generateNextQuestion — gpt-oss-120b's default 'medium' reasoning
+    // effort can otherwise consume the whole token budget before emitting
+    // any visible answer.
+    reasoning_effort: "low",
     messages: [
       {
         role: "system",
         content: `You are a senior ${domain} technical interviewer conducting a ${session.round_type} interview at ${session.company}.
 
+--- DIFFICULTY (this governs complexity, not the examples below) ---
+${difficultyInstruction}
+
 ${fewShotExamples}
 ${companyContextBlock}
 RULES:
-- Ask one question only. No preamble.
-- Questions must require deep ${domain} expertise — a generic backend interviewer should not know to ask this.
-- Adapt depth to YOE: ${session.yoe} years of experience.
+- Ask exactly ONE question, and make it a single, self-contained ask — not several requirements stacked into one sentence via commas or "and" (e.g. don't ask for a design AND the data pipeline AND the statistical method AND the guardrails all at once). No preamble, no bullet points, no numbered sub-parts.
+- Questions must require deep ${domain} expertise — a generic backend interviewer should not know to ask this — but expertise depth and question complexity are two different things: match complexity to the YOE guidance above.
 - Do not repeat topics from previous Q&As.${session.jd_content ? `\n- Stay relevant to the JD: ${session.jd_content.slice(0, 800)}` : ""}${session.background ? `\n- Tailor to candidate background: ${session.background.slice(0, 500)}` : ""}`,
       },
       {
@@ -257,6 +285,27 @@ export interface SkillAnalysis {
   evidence_quotes: string[];
 }
 
+export interface QuestionWalkthroughEntry {
+  question_number: number;
+  key_takeaway: string; // what happened in this answer AND what it signals for the hire decision
+  signal_ids: string[]; // 1-3 of the 8 parameter_ids this question mainly produced evidence for
+}
+
+export interface ModelAnswer {
+  question_number: number;  // the actual question this illustrates a stronger answer to
+  parameter_id: string;     // the weak signal this addresses (should be a low-rated one)
+  your_quote: string;       // verbatim — must be one of that signal's evidence_quotes, word-for-word
+  why_it_hurt: string;      // one sentence, in the interviewer's likely read of that exact quote — not generic advice
+  framework: string;        // short framework name — must be one of the 3 canonical frameworks (see SIGNAL_FRAMEWORKS)
+  model_excerpt: string;    // 2-4 sentences: a concrete, plausible stronger answer to that specific question
+}
+
+export interface PriorityRisk {
+  title: string;              // short, e.g. "Evidence gap" — a root cause, not a symptom
+  description: string;        // one sentence: what the pattern actually is, in plain language
+  related_signal_ids: string[]; // which of the 8 signals this root cause explains (usually 2-4)
+}
+
 export interface DebriefReport {
   summary: {
     recommendation: "Strong Hire" | "Hire" | "Borderline" | "No Hire";
@@ -268,11 +317,32 @@ export interface DebriefReport {
     avg_response_latency_sec: number;
     signal_to_noise_ratio: number;  // 0.0-1.0
     interruption_count: number;
+    // Both injected by TS from real instrumentation, not LLM-estimated —
+    // unlike the four fields above, these come straight from
+    // qa_pairs.answer_duration_sec and sessions.candidate_questions_asked
+    // (Backlog #10/#11: data was already collected but never surfaced).
+    // No research-backed benchmark exists for either yet, so the UI shows
+    // them as plain stats rather than inventing ideal/watch/flag bands.
+    longest_monologue_sec?: number;
+    candidate_questions_asked?: number;
   };
-  skill_analysis: SkillAnalysis[]; // exactly 8 items
+  skill_analysis: SkillAnalysis[]; // exactly 8 items — supporting detail behind priority_risks, not the primary read
+  question_walkthrough: QuestionWalkthroughEntry[]; // one entry per answered question, in order
+  // The consolidated root-cause layer: 2-3 items, not 8 separate scores.
+  // Every signal in skill_analysis rated <=3 must be explained by at least
+  // one priority_risk's related_signal_ids — these are root causes, the 8
+  // signals are the evidence for them, not a parallel list of problems.
+  priority_risks: PriorityRisk[];
+  model_answers: ModelAnswer[]; // up to 3 — one per priority_risk where the transcript supports it
+  // One sentence: what single piece of evidence, if present in the
+  // transcript, would most likely move the recommendation up one tier
+  // (e.g. Borderline -> Hire). Grounded in what's actually missing, not
+  // generic advice.
+  path_to_next_tier: string;
   behavioral_insights: {
     star_adherence_score: number;   // 0-100
     confidence_level: "High" | "Medium" | "Low";
+    confidence_rationale: string;   // why — tied to answer count/coverage, e.g. "few platform-specific questions were asked"
     red_flags: string[];
   };
   actionable_feedback: {
@@ -301,7 +371,7 @@ const FEW_SHOT_EXAMPLES = `
   "summary": {
     "recommendation": "Strong Hire",
     "hire_probability": 0,
-    "overall_impression": "The candidate demonstrated SME-level depth across distributed systems and proactively surfaced trade-offs without prompting. Every claim was backed by specific, quantifiable outcomes."
+    "overall_impression": "Easy yes — SME-level depth on distributed systems, trade-offs surfaced before I had to ask, and every claim backed by a real number. I'd fast-track this one."
   },
   "metrics": {
     "talk_to_listen_ratio": "68/32",
@@ -329,9 +399,30 @@ const FEW_SHOT_EXAMPLES = `
       ]
     }
   ],
+  "question_walkthrough": [
+    {
+      "question_number": 1,
+      "key_takeaway": "Opened with a specific rebalancing latency fix (8s to 400ms) instead of a generic self-intro — immediately signaled hands-on ownership of production systems, the kind of concrete detail that earns trust in the first 60 seconds of a screen.",
+      "signal_ids": ["TECHNICAL_DEPTH", "RESULT_ORIENTATION"]
+    },
+    {
+      "question_number": 2,
+      "key_takeaway": "Named the exactly-once vs at-least-once trade-off unprompted, which is the difference an interviewer uses to separate 'has used Kafka' from 'understands Kafka' — this is the single strongest technical moment in the transcript.",
+      "signal_ids": ["TECHNICAL_DEPTH", "PROBLEM_SOLVING"]
+    },
+    {
+      "question_number": 3,
+      "key_takeaway": "Closed the migration story with a paired metric (p99 340ms→90ms, cost -23%) rather than stopping at 'it went well' — this is exactly the Impact step most candidates skip, and its presence here is why Result Orientation scored a 5.",
+      "signal_ids": ["RESULT_ORIENTATION", "STAR_ALIGNMENT"]
+    }
+  ],
+  "priority_risks": [],
+  "model_answers": [],
+  "path_to_next_tier": "Already at the top tier for this rubric — the only stretch is a stronger cross-functional stakeholder narrative in behavioral answers.",
   "behavioral_insights": {
     "star_adherence_score": 92,
     "confidence_level": "High",
+    "confidence_rationale": "Based on 5 substantive, technically detailed answers with consistent quantified outcomes across every question.",
     "red_flags": []
   },
   "actionable_feedback": {
@@ -346,7 +437,7 @@ const FEW_SHOT_EXAMPLES = `
   "summary": {
     "recommendation": "No Hire",
     "hire_probability": 0,
-    "overall_impression": "The candidate relied on vague, high-level descriptions without demonstrating how decisions were made or what results followed. Answers lacked specificity and were padded with filler."
+    "overall_impression": "I never got past surface-level descriptions — every time I pushed for how or why, I got restated context instead of a decision. I can't verify real understanding from this transcript, and that's a no."
   },
   "metrics": {
     "talk_to_listen_ratio": "81/19",
@@ -374,9 +465,53 @@ const FEW_SHOT_EXAMPLES = `
       ]
     }
   ],
+  "question_walkthrough": [
+    {
+      "question_number": 1,
+      "key_takeaway": "Named Kubernetes and microservices but justified the choice with 'industry standard' rather than a reason tied to the system's actual constraints — an interviewer hears this as pattern-matching on buzzwords, not engineering judgment, which is why this sets a low ceiling before the interview has really started.",
+      "signal_ids": ["TECHNICAL_DEPTH"]
+    },
+    {
+      "question_number": 2,
+      "key_takeaway": "The explanation looped back on itself twice before reaching a conclusion — a real interviewer would have to work to extract the actual point, which reads as unprepared even if the underlying work was fine.",
+      "signal_ids": ["COMMUNICATION_SNR"]
+    }
+  ],
+  "priority_risks": [
+    {
+      "title": "Evidence gap",
+      "description": "Makes claims about tools and decisions without the reasoning or specifics that would let an interviewer verify real understanding.",
+      "related_signal_ids": ["TECHNICAL_DEPTH", "PROBLEM_SOLVING"]
+    },
+    {
+      "title": "Answer architecture",
+      "description": "Talks around the point before eventually reaching it, forcing the interviewer to extract the actual answer instead of receiving it directly.",
+      "related_signal_ids": ["COMMUNICATION_SNR", "STAR_ALIGNMENT", "RESULT_ORIENTATION"]
+    }
+  ],
+  "model_answers": [
+    {
+      "question_number": 1,
+      "parameter_id": "TECHNICAL_DEPTH",
+      "your_quote": "We used Kubernetes because it's the industry standard and everyone uses it these days",
+      "why_it_hurt": "This reads as pattern-matching on a buzzword rather than a decision tied to an actual constraint, which is what an interviewer is listening for.",
+      "framework": "Answer → Reasoning → Trade-off",
+      "model_excerpt": "We moved to Kubernetes specifically because our deploy cadence was blocked on manual VM provisioning — it was taking us 40 minutes per release. K8s let us define declarative deployments and roll back in under a minute. The trade-off was operational complexity: we had to invest two weeks in on-call runbooks before it paid off."
+    },
+    {
+      "question_number": 2,
+      "parameter_id": "COMMUNICATION_SNR",
+      "your_quote": "So basically what happened was, we had this issue, and the issue was kind of like a problem with the system, and we needed to fix it, so we fixed it",
+      "why_it_hurt": "The interviewer has to wait through three restatements before learning what the actual problem or fix was — that reads as unprepared even if the underlying work was solid.",
+      "framework": "Answer → Evidence → Impact",
+      "model_excerpt": "Short answer: a bad cache invalidation was serving stale prices for up to 10 minutes. We fixed it by moving from TTL-based expiry to event-driven invalidation tied to the price-update queue, which cut staleness to under 5 seconds."
+    }
+  ],
+  "path_to_next_tier": "One technically detailed answer — naming a real constraint and a trade-off, the way the model answer above does — would be enough to move Technical Depth off the floor and shift this from No Hire toward Borderline.",
   "behavioral_insights": {
     "star_adherence_score": 28,
     "confidence_level": "Low",
+    "confidence_rationale": "Based on 5 answers, but 4 of them lacked enough specificity to confidently separate genuine gaps from nervousness or unfamiliarity with interview format.",
     "red_flags": ["Circular answers with no resolution", "No quantifiable outcomes in any response"]
   },
   "actionable_feedback": {
@@ -391,7 +526,7 @@ const FEW_SHOT_EXAMPLES = `
   "summary": {
     "recommendation": "Borderline",
     "hire_probability": 0,
-    "overall_impression": "The candidate communicated clearly and concisely but lacked the technical depth expected for this role. Strong on soft skills; weak on systems knowledge."
+    "overall_impression": "I'd want a second, more technical opinion before deciding — communication and reasoning are genuinely strong, but I don't yet have enough evidence this candidate can operate at the systems depth the role needs."
   },
   "metrics": {
     "talk_to_listen_ratio": "62/38",
@@ -419,9 +554,40 @@ const FEW_SHOT_EXAMPLES = `
       ]
     }
   ],
+  "question_walkthrough": [
+    {
+      "question_number": 4,
+      "key_takeaway": "Gave a clean answer-first justification for Postgres over DynamoDB with the actual access-pattern reasoning — this is the strongest moment in the transcript and shows the communication skill is real, not just polish.",
+      "signal_ids": ["COMMUNICATION_SNR", "PROBLEM_SOLVING"]
+    },
+    {
+      "question_number": 6,
+      "key_takeaway": "Admitted not knowing how B-tree indexes work under the hood when probed — the honesty is a plus for trust, but for a senior-level bar this is exactly the depth gap that would surface again in a real system design round.",
+      "signal_ids": ["TECHNICAL_DEPTH"]
+    }
+  ],
+  "priority_risks": [
+    {
+      "title": "Depth ceiling",
+      "description": "Can name and use the right tool but hasn't gone one layer deeper into how or why it works — fine for a mid-level bar, a real gap at the senior bar this role needs.",
+      "related_signal_ids": ["TECHNICAL_DEPTH"]
+    }
+  ],
+  "model_answers": [
+    {
+      "question_number": 6,
+      "parameter_id": "TECHNICAL_DEPTH",
+      "your_quote": "I've heard of B-tree indexes but I'm not sure exactly how they work under the hood",
+      "why_it_hurt": "Honesty about a gap builds trust, but for a senior-level bar this is exactly the depth an interviewer needs to see, and its absence caps the score regardless of how well the rest of the answer was delivered.",
+      "framework": "Answer → Reasoning → Trade-off",
+      "model_excerpt": "I added a B-tree index on the lookup column — it works by keeping sorted keys in a balanced tree so the query planner can do O(log n) lookups instead of a full scan. I chose it over a hash index because we also needed range queries, which hash indexes can't serve. The trade-off is slightly slower writes since every insert has to maintain the tree balance."
+    }
+  ],
+  "path_to_next_tier": "One answer at the depth of the model answer above — explaining a system's internals, not just its interface — would likely be enough evidence to move this from Borderline to Hire.",
   "behavioral_insights": {
     "star_adherence_score": 65,
     "confidence_level": "Medium",
+    "confidence_rationale": "Based on 7 answers with consistent communication quality, but only 2 questions probed technical internals directly, which limits how confidently the depth gap can be generalized.",
     "red_flags": ["Technical depth insufficient for senior-level role"]
   },
   "actionable_feedback": {
@@ -481,15 +647,22 @@ ${SIGNAL_ANCHORS}
 --- INSTRUCTIONS ---
 1. For EVERY signal in skill_analysis, provide at least 2 verbatim quotes from the candidate's answers as evidence_quotes. Copy word-for-word from the transcript above — do not paraphrase.
 2. Set hire_probability to 0 (this will be computed deterministically by the system).
-3. For metrics, estimate talk_to_listen_ratio based on relative answer lengths, signal_to_noise_ratio based on how much actionable content vs. filler was present, and set avg_response_latency_sec to 2.0 and interruption_count to 0 (defaults — not measurable from text).
-4. Return raw JSON only — no markdown, no code blocks.
+3. For metrics, estimate talk_to_listen_ratio based on relative answer lengths, signal_to_noise_ratio based on how much actionable content vs. filler was present, and set avg_response_latency_sec to 2.0 and interruption_count to 0 (defaults — not measurable from text). signal_to_noise_ratio measures DENSITY of substance in the words used — a different thing from whether those words were well-organized (that's COMMUNICATION_SNR / STAR_ALIGNMENT below). A candidate can have dense, substantive content that is nonetheless poorly structured. If your signal_to_noise_ratio is high but COMMUNICATION_SNR or STAR_ALIGNMENT is rated <=3 (or vice versa), you MUST reconcile that explicitly in the relevant reasoning text (e.g. "dense with real content, but that content wasn't organized — buried the point three sentences in") — never let the metric and the rating silently contradict each other.
+4. overall_impression must be written in first person, in the interviewer's own voice, as the verdict they'd actually report back to a hiring committee — a conclusion ("I'd fast-track this one" / "that's a no" / "I'd want a second opinion"), not a third-person summary of topics covered. This is the one thing a busy interviewer would say out loud if asked "so, how'd it go?" — see the few-shot examples above for the exact register.
+5. Every skill_analysis[].reasoning must do two things, not one: describe what the candidate actually did (the behavior), AND state what that signals to a real interviewer and how it would affect the hire decision. "Explained the caching layer clearly" is not enough — say what that clarity implies (e.g. "which is the kind of clarity that shortens a technical debrief and builds confidence fast"). A reasoning string that only describes behavior without stating its interview consequence is incomplete.
+6. Populate question_walkthrough with one entry per answered question, in question_number order. Each key_takeaway must name what happened in that specific answer AND its hire-decision implication (same two-part requirement as #5) in 1-2 sentences — this is a walkthrough of the interview, not a restatement of skill_analysis. Reference 1-3 signal_ids per entry (from the 8 parameter_ids) that this question's answer produced the clearest evidence for.
+7. Populate priority_risks with 2-3 entries — root causes, not a re-listing of every weak signal. Look across all 8 skill_analysis ratings for the pattern underneath them: e.g. "makes claims without evidence" might explain low TECHNICAL_DEPTH, PROBLEM_SOLVING, and RESULT_ORIENTATION all at once. Every signal rated <=3 must be explained by at least one priority_risk's related_signal_ids — if you can't fit a weak signal under one of your 2-3 risks, your risks are too narrow; broaden or merge them. If every signal rated 4+, priority_risks may be empty or name what's still worth sharpening.
+8. Populate model_answers. If priority_risks is non-empty, model_answers MUST also be non-empty — at least 1 entry, ideally one per priority_risk, up to 3 total. Only return an empty array when priority_risks is ALSO empty (every signal rated 4+) — never skip this field just because filling it out is demanding; an empty array is a claim that nothing needs fixing, and if you've named a priority_risk that claim is false. Each entry needs: your_quote (a real quote from the candidate's answer to that specific question — take it directly from the transcript, verbatim, no paraphrasing — it does not need to be identical to a string already used in evidence_quotes, just genuinely from the transcript), why_it_hurt (one sentence: what the interviewer likely concluded from THAT SPECIFIC quote, not generic advice), framework (must be exactly one of these three names: "Answer → Evidence → Impact", "Situation → Action → Result", or "Answer → Reasoning → Trade-off" — pick whichever fits the question type), and model_excerpt (a concrete, plausible 2-4 sentence answer to THAT SPECIFIC question using that framework, grounded in the candidate's own domain/role, not a generic template).
+9. Set path_to_next_tier to one sentence: the SPECIFIC evidence that, if it had appeared in the transcript, would most likely move the recommendation up one tier (e.g. Borderline -> Hire). Ground it in what's actually missing from THIS transcript — "prepare more examples" is not acceptable, name the specific kind of evidence (e.g. "one technically detailed answer with a quantified outcome, on par with the acquisition story in Q3").
+10. Set behavioral_insights.confidence_rationale to one sentence explaining WHY confidence is at that level, tied to something concrete about the session — answer count, topic coverage, or consistency (e.g. "based on 7 substantive answers; technical-depth confidence is lower because few platform-specific questions came up").
+11. Return raw JSON only — no markdown, no code blocks.
 
 Return this exact structure:
 {
   "summary": {
     "recommendation": "Strong Hire" | "Hire" | "Borderline" | "No Hire",
     "hire_probability": 0,
-    "overall_impression": "2-3 honest sentences about the candidate's overall performance."
+    "overall_impression": "1-2 sentences, first person, in the interviewer's voice — the verdict, not a topic summary."
   },
   "metrics": {
     "talk_to_listen_ratio": "e.g. 72/28",
@@ -501,13 +674,39 @@ Return this exact structure:
     {
       "parameter_id": "TECHNICAL_DEPTH",
       "rating": 1-5,
-      "reasoning": "Why you gave this score.",
+      "reasoning": "What they did, and what it signals for the hire decision.",
       "evidence_quotes": ["verbatim quote 1", "verbatim quote 2"]
     }
   ],
+  "question_walkthrough": [
+    {
+      "question_number": 1,
+      "key_takeaway": "What happened in this answer and its hire-decision implication, 1-2 sentences.",
+      "signal_ids": ["TECHNICAL_DEPTH"]
+    }
+  ],
+  "priority_risks": [
+    {
+      "title": "Short root-cause name, 2-4 words",
+      "description": "One sentence: what the underlying pattern actually is.",
+      "related_signal_ids": ["TECHNICAL_DEPTH", "RESULT_ORIENTATION"]
+    }
+  ],
+  "model_answers": [
+    {
+      "question_number": 1,
+      "parameter_id": "TECHNICAL_DEPTH",
+      "your_quote": "Verbatim quote copied word-for-word from evidence_quotes.",
+      "why_it_hurt": "One sentence: what the interviewer likely concluded from that exact quote.",
+      "framework": "Answer → Evidence → Impact" | "Situation → Action → Result" | "Answer → Reasoning → Trade-off",
+      "model_excerpt": "A concrete stronger answer to that exact question, 2-4 sentences."
+    }
+  ],
+  "path_to_next_tier": "One sentence: the specific evidence that would most likely move the recommendation up a tier.",
   "behavioral_insights": {
     "star_adherence_score": 0-100,
     "confidence_level": "High" | "Medium" | "Low",
+    "confidence_rationale": "One sentence: why, tied to answer count/coverage/consistency.",
     "red_flags": ["list any red flags, or empty array"]
   },
   "actionable_feedback": {
@@ -521,7 +720,12 @@ Include all 8 signals in skill_analysis in this order: TECHNICAL_DEPTH, PROBLEM_
 
   const completion = await getClient().chat.completions.create({
     model: MODEL,
-    max_tokens: 3000,
+    max_tokens: 7000,
+    // See generateNextQuestion — gpt-oss-120b's default 'medium' reasoning
+    // effort burns hidden reasoning tokens out of the same max_tokens budget.
+    // The debrief output is long and structured; keep the budget for visible
+    // JSON, not hidden reasoning.
+    reasoning_effort: "low",
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: "Generate the structured debrief report." },
@@ -532,6 +736,25 @@ Include all 8 signals in skill_analysis in this order: TECHNICAL_DEPTH, PROBLEM_
   // Strip markdown code block if present
   const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
   const report = JSON.parse(jsonStr) as DebriefReport;
+  // Defensive defaults — the LLM occasionally omits a field despite instructions;
+  // downstream rendering should degrade gracefully, not crash.
+  report.question_walkthrough = report.question_walkthrough ?? [];
+  report.model_answers = report.model_answers ?? [];
+  report.priority_risks = report.priority_risks ?? [];
+  report.path_to_next_tier = report.path_to_next_tier ?? "";
+  if (report.behavioral_insights) {
+    report.behavioral_insights.confidence_rationale = report.behavioral_insights.confidence_rationale ?? "";
+  }
+  // Instruction #8 requires model_answers to be non-empty whenever
+  // priority_risks is non-empty — if the model didn't follow that, it's a
+  // real prompt-compliance gap worth knowing about rather than a silent
+  // empty section. Logged, not enforced: better to show nothing than to
+  // synthesize a fake rewrite server-side.
+  if (report.priority_risks.length > 0 && report.model_answers.length === 0) {
+    console.warn(
+      `[generateDebrief] priority_risks non-empty (${report.priority_risks.length}) but model_answers came back empty — prompt-compliance gap, "Moments That Cost You Signal" will be hidden`
+    );
+  }
 
   const usage = {
     input_tokens: completion.usage?.prompt_tokens ?? 0,
@@ -540,4 +763,69 @@ Include all 8 signals in skill_analysis in this order: TECHNICAL_DEPTH, PROBLEM_
   };
 
   return { report, usage };
+}
+
+// ─── Drill / Retry Loop ──────────────────────────────────────────────────────
+// Direct product feedback: the report shouldn't stop at "here's a better
+// answer" — it should let the candidate actually try the rewrite and see if
+// it worked ("Interview -> Diagnosis -> Rewrite -> Drill -> Retry -> Trend").
+// This is a deliberately tiny, single-signal rescore — NOT a full debrief —
+// so a practice attempt gets fast, cheap, focused feedback instead of
+// waiting on a multi-thousand-token structured report.
+
+export interface DrillScoreResult {
+  rating: number;    // 1-5, same BARS scale as skill_analysis
+  reasoning: string;  // one sentence: what changed vs. the original attempt, and what (if anything) is still missing
+}
+
+export interface DrillAttemptInput {
+  question: string;
+  parameter_id: string;      // which of the 8 signals to score against
+  original_rating: number;   // the rating this answer got in the real interview
+  attempt_answer: string;    // the candidate's new, rewritten answer
+  role: string;
+  company: string;
+}
+
+export async function scoreDrillAttempt(
+  input: DrillAttemptInput
+): Promise<{ result: DrillScoreResult; usage: { input_tokens: number; output_tokens: number; model: string } }> {
+  const systemPrompt = `You are scoring a SINGLE practice answer against ONE interview signal, using the same BARS rubric a full interview debrief uses. This is a practice drill — the candidate rewrote their answer and wants to know, honestly, whether it actually improved.
+
+Role: ${input.role} at ${input.company}
+Question: ${input.question}
+Signal being scored: ${input.parameter_id}
+
+--- SCORING RUBRIC (score only the signal above, using its anchor) ---
+${SIGNAL_ANCHORS}
+
+The candidate's ORIGINAL answer to this question scored ${input.original_rating}/5 on ${input.parameter_id}. Here is their NEW attempt:
+"${input.attempt_answer}"
+
+Score the new attempt 1-5 on ${input.parameter_id} using the anchors above. Be honest — if it didn't actually improve, or overcorrected into a new problem, say so. Do not inflate the score just because they made an effort.
+
+Return raw JSON only, no markdown:
+{ "rating": 1-5, "reasoning": "One sentence: what's different from the original attempt, and what (if anything) is still missing." }`;
+
+  const completion = await getClient().chat.completions.create({
+    model: MODEL,
+    max_tokens: 400,
+    reasoning_effort: "low",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: "Score this practice attempt." },
+    ],
+  });
+
+  const raw = completion.choices[0].message.content?.trim() ?? "";
+  const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+  const result = JSON.parse(jsonStr) as DrillScoreResult;
+
+  const usage = {
+    input_tokens: completion.usage?.prompt_tokens ?? 0,
+    output_tokens: completion.usage?.completion_tokens ?? 0,
+    model: MODEL,
+  };
+
+  return { result, usage };
 }

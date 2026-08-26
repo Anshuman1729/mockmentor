@@ -2,7 +2,7 @@
 
 ## What This App Is
 PrepSignals is an AI-powered mock interview platform. Tagline: "Know exactly where you'd lose the offer — before you walk in."
-Stack: Next.js 16 (App Router), TypeScript, Tailwind CSS, Neon Postgres, Groq API (Llama 4 Scout 17B MoE + Whisper v3 Turbo), Sarvam AI TTS, Resend, Clerk auth.
+Stack: Next.js 16 (App Router), TypeScript, Tailwind CSS, Neon Postgres, Groq API (`openai/gpt-oss-120b` + Whisper v3 Turbo — Llama 4 Scout was swapped out after Groq decommissioned Llama 3.3; gpt-oss defaults to `reasoning_effort: "medium"`, which the question-generation calls override to `"low"` to avoid burning the token budget on hidden reasoning before the answer), Sarvam AI TTS (`bulbul:v3` via the `/text-to-speech/stream` HTTP streaming endpoint), Resend, Clerk auth.
 
 ## Non-Negotiable Rules
 
@@ -30,10 +30,10 @@ Stack: Next.js 16 (App Router), TypeScript, Tailwind CSS, Neon Postgres, Groq AP
 ## Key Architecture Decisions
 - **Evidence-first scoring**: LLM extracts verbatim quotes per signal; TS calculates hire_probability (vibe-proof)
 - **Seniority modifiers**: `calculateNormalizedScore()` applies Junior/Mid/Senior weights from `lib/rubric-researched.ts`
-- **Round-dynamic question counts**: screening=5, technical=8, final=10, behavioural=7
+- **Round-dynamic question counts** (`QUESTIONS_BY_ROUND` in `app/api/interview/question/route.ts`): technical_screen=5, technical_deep_dive=8, system_design=6, behavioural=7, final=8, hr_screen=5, case_study=5. (This line previously said "screening=5, technical=8, final=10, behavioural=7" — final was wrong (10 vs actual 8), and several round types weren't listed at all.)
 - **Lazy Groq client**: instantiated on first use to avoid build-time env var errors
-- **Signal-Seeking Seeding** (planned — `feat/intelligence-db-fatal-flag`): question route fetches a verified seed from `question_bank` (company + round_type match, excluding already-used seeds). Seed passed to `generateNextQuestion` which LLM-adapts it to target uncovered signals.
-- **Fatal Flag** (planned): `lib/fatal-flag.ts` — deterministic, no LLM. Zero signal = null answer, <10 words, or "I don't know" phrases. >30% skip rate → force "No Hire", cap hire_probability ≤30.
+- **Signal-Seeking Seeding** (done — landed via `feat/intelligence-db-fatal-flag`, this line previously said "planned" which contradicted the PRD Status table below marking it ✅ Done): question route fetches a verified seed from `question_bank` (domain → company → generic match, excluding already-used seeds), only for technical-style rounds (see `seedRoundType()` — HR/behavioral rounds never use domain-seeded generation, since it has no round-type awareness of its own). Seed passed to `generateNextQuestion` which LLM-adapts it to target uncovered signals.
+- **Fatal Flag** (done, same stale-"planned" fix as above): `lib/fatal-flag.ts` — deterministic, no LLM. Zero signal = null answer, <10 words, or "I don't know" phrases. >30% skip rate → force "No Hire", cap hire_probability ≤30.
 
 ## Metric Benchmarks (research-backed — do not change without new research)
 | Metric | Target | High Risk | Low Risk |
@@ -48,9 +48,12 @@ Stack: Next.js 16 (App Router), TypeScript, Tailwind CSS, Neon Postgres, Groq AP
 npm run test:debrief         # seed mock session + debrief (no LLM, instant)
 npm run test:debrief:live    # seed + call real API (dev server must be running)
 npm run test:debrief:clean   # delete test sessions, seed fresh
+npm run test                 # vitest unit tests (lib/rubric-researched.ts, lib/fatal-flag.ts)
+npm run test:coverage        # vitest with coverage
 ```
 - Loading screen preview: `http://localhost:3000/dev/loading`
 - Test sessions use `user_email = 'test@prepsignals.dev'`
+- `scripts/audit-gaps/lighthouse-check.mjs` and `axe-core-check.mjs` exist for perf/a11y checks against a running dev server — not wired into CI yet, run manually
 
 ## DB Schema Notes
 - `debriefs` columns: `debrief_data` (JSONB, user-facing), `reasoning` (JSONB, internal), `actual_outcome` (TEXT), `company_type` (TEXT), `tokens_used` (JSONB: `{input_tokens, output_tokens, model}`)
@@ -73,7 +76,7 @@ npm run test:debrief:clean   # delete test sessions, seed fresh
 | Session history | ✅ Done |
 | Profile/TMAY step | ✅ Done |
 | STT fix + error handling | ✅ Done |
-| Mobile responsiveness | ❓ Not verified |
+| Mobile responsiveness | 🟡 Addressed (98e1877, then a consistency pass 2026-08-26) — fixed via static code analysis only; still needs a real visual pass in a browser against a live session (interview room / debrief with real content) before calling it verified |
 | Landing page with CTA | ❓ Not tracked |
 
 ### Batch Implementation (2026-03-07)
@@ -101,6 +104,41 @@ npm run test:debrief:clean   # delete test sessions, seed fresh
 | Shareable debrief card | ⬛ Not started |
 | PhonePe payment | ⬛ Not started |
 
+### Debrief/UI Redesign (overnight session on `feat/phase2-2.5`)
+| Item | Status |
+|---|---|
+| MetricCard (What/Benchmark/Yours) actually rendered | ✅ Done — was fully built but never wired in |
+| Question-by-question walkthrough (`question_walkthrough`) | ✅ Done — new `DebriefReport` field, one entry per answered question |
+| Deterministic framework-per-signal (`SIGNAL_FRAMEWORKS` in `lib/rubric-researched.ts`) | ✅ Done — surfaced on any signal rated ≤3 |
+| Model answer excerpts (`model_answers`) grounded in the actual question | ✅ Done — 1-2 entries, weakest signal(s) only |
+| `skill_analysis[].reasoning` states hire-decision implication, not just behavior | ✅ Done — prompt requirement in `lib/groq.ts` |
+| Every signal explains itself regardless of score (`SIGNAL_META.blurb`) | ✅ Done — jargon (STAR/SNR) no longer unexplained on high scores |
+| Fixed double-navbar (homepage nav + generic shared header both rendering) | ✅ Done — root layout split into bare shell + `(app)` route-group layout |
+| Fixed dark-mode badge colors on light `SessionHistory` cards (also: "Hire" fell through to the red badge) | ✅ Done |
+| Fixed verdict banner permanently stuck via unbounded `sticky` (covered content for the entire scroll, both mobile and desktop) | ✅ Done — found via persona review, was a real severe bug |
+| Above-the-fold summary (bottom-line fix + quick nav) so a long report isn't "nothing to grab onto" before scrolling | ✅ Done |
+| `/dev/debrief` mock preview (+ `?scenario=strong` / `?scenario=nohire`) for DB-free visual QA | ✅ Done |
+| Longest-monologue / candidate-question-rate surfaced in metrics cards (Backlog #10/#11) | ✅ Done — plain ungraded stats, no invented benchmark |
+
+### Debrief "Coaching Cockpit" Rework (same branch, following direct user product feedback)
+Direct critique after the redesign above landed: the report was optimized for producing an
+impressive artifact, not for closing the gap between "I messed this up" and "here's exactly
+what to do differently." Reworked within the existing architecture; see git log on
+`feat/phase2-2.5` for the full rationale per change.
+| Item | Status |
+|---|---|
+| `priority_risks` — 2-3 consolidated root causes replacing "8 separate scores" as the primary read | ✅ Done — every signal rated ≤3 must be explained by one, enforced in the prompt |
+| `ModelAnswer` enriched with `your_quote` + `why_it_hurt` (Observed → Problem → Better) | ✅ Done — up to 3 entries, one per priority_risk |
+| `path_to_next_tier` — the counterfactual ("what would move the verdict") | ✅ Done |
+| `confidence_rationale` — ties Confidence to something concrete instead of bare metadata | ✅ Done |
+| `overall_impression` in the interviewer's first-person voice, elevated as the verdict banner's centerpiece quote | ✅ Done |
+| SNR/verbosity contradiction fix: "Signal-to-Noise" renamed "Content Density", copy explicitly separates density from structure | ✅ Done |
+| Frameworks consolidated 8→3 canonical (`CANONICAL_FRAMEWORKS` in `lib/rubric-researched.ts`) | ✅ Done |
+| `SIGNAL_META.bars` rewritten from generic tier words ("Proficient") to specific behavioral descriptions | ✅ Done — "false precision" fix |
+| Signal Analysis demoted to collapsed (`<details>`) supporting evidence, no longer the primary read | ✅ Done |
+| Retry/drill loop (rewrite an answer, get rescored) | 🟡 Built — `POST /api/interview/drill` + `scoreDrillAttempt()` in `lib/groq.ts`, ephemeral (no DB write) by design. Untested against a live `GROQ_API_KEY` — needs a smoke test before considering it verified. |
+| Cross-session trend tracking (same weakness across interviews) | 🟡 Built — `GET /api/sessions/[sessionId]` now returns `history` (zero schema changes), rendered as "Your Recurring Pattern" in `DebriefReport.tsx`. Untested against real multi-session data — needs a smoke test with an actual repeat user. |
+
 ### Intelligence DB (`feat/intelligence-db-fatal-flag`)
 | Item | Status |
 |---|---|
@@ -110,7 +148,7 @@ npm run test:debrief:clean   # delete test sessions, seed fresh
 | Missing-signal rawScores defaulted to 0 | ✅ Done (PR 1) |
 | CC0 ingestion script (`scripts/seed-intelligence.ts`) | ✅ Code complete (PR 2) — needs live seed run to verify |
 | Signal-Seeking Seeding in `generateNextQuestion` | ✅ Done (PR 2) — seed fetched in question route (domain→company→generic), injected into prompt, `seed_question_id` persisted |
-| Calibration loop logging per session | 🟡 Partial (PR 2) — debrief route logs `ai_score` + `llm_reasoning`; outcome API does NOT yet backfill `actual_outcome`/`discrepancy_score` into `calibration_loops` |
+| Calibration loop logging per session | ✅ Done — debrief route logs `ai_score` + `llm_reasoning`; outcome API backfills `actual_outcome`/`discrepancy_score` into `calibration_loops` (commit `9bfe87b`) |
 
 ### Week 3+ — Monetisation
 - Free (₹0): 1 mock, basic debrief, limited signals
@@ -119,5 +157,5 @@ npm run test:debrief:clean   # delete test sessions, seed fresh
 
 ## Key User Feedback
 - Entry #1: Key Moments / specific question highlights explicitly valued — do not remove
-- Entry #4: TTS slightly slow (BACKLOG #8 pending). Loading time praised.
+- Entry #4: TTS slightly slow. Speed control + mute (BACKLOG #8) shipped since (was already done, backlog was stale); TTS also upgraded to `bulbul:v3` via the streaming endpoint (2026-08-26) as a further latency attempt — unverified against real user perception. Loading time praised.
 - Entry #1: "baaki this is pretty good man"

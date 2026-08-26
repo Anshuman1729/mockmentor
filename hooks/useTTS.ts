@@ -27,6 +27,23 @@ export function useTTS() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const resolveRef = useRef<(() => void) | null>(null);
 
+  // Web Audio graph for the voice-orb visualization — one AudioContext reused
+  // across every speak() call, since browsers cap how many can be open at once.
+  // A fresh AnalyserNode is wired up per utterance (createMediaElementSource
+  // can only be called once per <audio> element, and speak() creates a new
+  // element every call anyway).
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+
+  function getAudioContext(): AudioContext | null {
+    if (typeof window === "undefined") return null;
+    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return null;
+    if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
+    if (audioCtxRef.current.state === "suspended") audioCtxRef.current.resume().catch(() => {});
+    return audioCtxRef.current;
+  }
+
   // Stop any in-progress audio and settle its pending promise so callers
   // awaiting speak() never hang (e.g. when muted mid-utterance).
   const stopPlayback = useCallback(() => {
@@ -35,6 +52,7 @@ export function useTTS() {
       audioRef.current.src = "";
       audioRef.current = null;
     }
+    analyserRef.current = null;
     setIsSpeaking(false);
     if (resolveRef.current) {
       const resolve = resolveRef.current;
@@ -95,9 +113,29 @@ export function useTTS() {
             const audio = new Audio(url);
             audioRef.current = audio;
 
+            // Wire this utterance into the analyser graph for the voice orb.
+            // Best-effort — if Web Audio isn't available, orb just falls back
+            // to its idle animation. Must route through to destination or the
+            // element's own playback goes silent once tapped into the graph.
+            try {
+              const ctx = getAudioContext();
+              if (ctx) {
+                const source = ctx.createMediaElementSource(audio);
+                const analyser = ctx.createAnalyser();
+                analyser.fftSize = 256;
+                analyser.smoothingTimeConstant = 0.7;
+                source.connect(analyser);
+                analyser.connect(ctx.destination);
+                analyserRef.current = analyser;
+              }
+            } catch {
+              analyserRef.current = null;
+            }
+
             audio.onended = () => {
               URL.revokeObjectURL(url);
               audioRef.current = null;
+              analyserRef.current = null;
               setIsSpeaking(false);
               resolveRef.current = null;
               resolve();
@@ -106,6 +144,7 @@ export function useTTS() {
             audio.onerror = () => {
               URL.revokeObjectURL(url);
               audioRef.current = null;
+              analyserRef.current = null;
               setIsSpeaking(false);
               resolveRef.current = null;
               reject(new Error("Audio playback failed"));
@@ -114,6 +153,7 @@ export function useTTS() {
             audio.play().catch((err) => {
               URL.revokeObjectURL(url);
               audioRef.current = null;
+              analyserRef.current = null;
               setIsSpeaking(false);
               resolveRef.current = null;
               reject(err);
@@ -128,5 +168,5 @@ export function useTTS() {
     [stopPlayback]
   );
 
-  return { speak, cancel, isSpeaking, rate, cycleRate, muted, toggleMute };
+  return { speak, cancel, isSpeaking, rate, cycleRate, muted, toggleMute, analyserRef };
 }

@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Sarvam AI TTS proxy — bulbul:v2, English-India
-// Voice: "arvind" — clear professional male voice
+// Sarvam AI TTS proxy — bulbul:v3 via the HTTP Streaming endpoint
+// (/text-to-speech/stream), which returns raw binary audio as soon as the
+// first chunk is ready instead of waiting for the whole clip and wrapping it
+// in a base64 JSON envelope (that's the older, non-streaming /text-to-speech
+// endpoint's shape). Voice: "shubh" — the documented bulbul:v3 default;
+// the previous "karun" (v2) speaker's v3 compatibility isn't confirmed, so
+// this deliberately uses the value Sarvam's own v3 examples use.
 export async function POST(req: NextRequest) {
   try {
     const { text, pace } = await req.json();
@@ -9,8 +14,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "text is required" }, { status: 400 });
     }
 
-    // Clamp to a safe range regardless of what the client sends —
-    // UI only exposes 0.75x-1.5x, this is defense in depth.
+    // Clamp to a safe range regardless of what the client sends — UI only
+    // exposes 0.75x-1.5x, this is defense in depth. Also bulbul:v3's
+    // documented pace range (0.5-2.0) is tighter than v2's (0.3-3.0).
     const requestedPace = typeof pace === "number" && Number.isFinite(pace) ? pace : 1.0;
     const clampedPace = Math.min(2.0, Math.max(0.5, requestedPace));
 
@@ -22,7 +28,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const response = await fetch("https://api.sarvam.ai/text-to-speech", {
+    const response = await fetch("https://api.sarvam.ai/text-to-speech/stream", {
       method: "POST",
       headers: {
         "api-subscription-key": apiKey,
@@ -30,34 +36,29 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         text,
-        target_language_code: "en-IN",
-        speaker: "karun",
+        language_code: "en-IN",
+        speaker: "shubh",
         pace: clampedPace,
         speech_sample_rate: 22050,
         enable_preprocessing: true,
-        model: "bulbul:v2",
+        model: "bulbul:v3",
         output_audio_codec: "mp3",
       }),
     });
 
-    if (!response.ok) {
-      const err = await response.text();
-      console.error("[TTS] Sarvam error:", err);
+    if (!response.ok || !response.body) {
+      const err = await response.text().catch(() => "");
+      console.error("[TTS] Sarvam error:", response.status, err);
       return NextResponse.json(
         { error: `Sarvam error: ${response.status}` },
-        { status: response.status }
+        { status: response.status || 502 }
       );
     }
 
-    const data = await response.json();
-    // Sarvam returns audios as array of base64-encoded audio strings
-    const audioBase64 = data.audios?.[0];
-    if (!audioBase64) {
-      return NextResponse.json({ error: "No audio returned" }, { status: 500 });
-    }
-
-    const audioBuffer = Buffer.from(audioBase64, "base64");
-    return new NextResponse(audioBuffer, {
+    // The streaming endpoint's response body IS the audio — pass it straight
+    // through rather than buffering it into a Buffer first, so the client
+    // starts receiving bytes as soon as we do.
+    return new NextResponse(response.body, {
       status: 200,
       headers: { "Content-Type": "audio/mpeg" },
     });

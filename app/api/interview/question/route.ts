@@ -123,46 +123,50 @@ export async function POST(req: NextRequest) {
     }
 
     // If no seed found AND user has a domain → use domain-specific generation
-    let question: string;
-    if (!seed && session.domain) {
-      question = await generateDomainQuestion(
-        {
-          role: session.role,
-          company: session.company,
-          yoe: session.yoe,
-          round_type: normalizedRound,
-          jd_content: session.jd_content,
-          background: session.background,
-          company_stage: session.company_stage,
-          domain: session.domain,
-          total_questions: totalQuestions,
-        },
-        qas.map((qa) => ({
-          question_number: qa.question_number,
-          question: qa.question,
-          answer: qa.answer,
-        }))
-      );
-    } else {
-      question = await generateNextQuestion(
-        {
-          role: session.role,
-          company: session.company,
-          yoe: session.yoe,
-          round_type: normalizedRound,
-          jd_content: session.jd_content,
-          background: session.background,
-          company_stage: session.company_stage,
-          domain: session.domain,
-          total_questions: totalQuestions,
-        },
-        qas.map((qa) => ({
-          question_number: qa.question_number,
-          question: qa.question,
-          answer: qa.answer,
-        })),
-        seed ?? undefined
-      );
+    const sessionContext = {
+      role: session.role,
+      company: session.company,
+      yoe: session.yoe,
+      round_type: normalizedRound,
+      jd_content: session.jd_content,
+      background: session.background,
+      company_stage: session.company_stage,
+      domain: session.domain,
+      total_questions: totalQuestions,
+    };
+    const qaHistoryForGen = qas.map((qa) => ({
+      question_number: qa.question_number,
+      question: qa.question,
+      answer: qa.answer,
+    }));
+
+    // generateDomainQuestion() has no HR/behavioral awareness — it always asks
+    // deep-expertise technical questions regardless of round type. It must
+    // only be used for technical-style rounds (the same technical/behavioural
+    // split already used for seed matching above), or an HR screen / behavioral
+    // round gets senior-level technical questions it explicitly should never ask.
+    const isTechnicalRound = seedRoundType(normalizedRound) === "technical";
+
+    async function generate(): Promise<string> {
+      if (!seed && session.domain && isTechnicalRound) {
+        return generateDomainQuestion(sessionContext, qaHistoryForGen);
+      }
+      return generateNextQuestion(sessionContext, qaHistoryForGen, seed ?? undefined);
+    }
+
+    // The model occasionally returns an empty completion (e.g. a reasoning
+    // model burning its whole token budget on hidden reasoning before ever
+    // emitting the answer). Retry once rather than silently persisting and
+    // serving blank question text — an empty "success" is worse than a
+    // clear failure the client already knows how to retry.
+    let question = (await generate()).trim();
+    if (!question) {
+      console.warn("[question] empty completion, retrying once", { sessionId, round: normalizedRound });
+      question = (await generate()).trim();
+    }
+    if (!question) {
+      console.error("[question] empty completion after retry", { sessionId, round: normalizedRound });
+      return NextResponse.json({ error: "Failed to generate a question — please try again." }, { status: 502 });
     }
 
     const nextNumber = qas.length + 1;
@@ -173,9 +177,12 @@ export async function POST(req: NextRequest) {
       RETURNING id
     `;
 
-    // Auto-cache: if domain-generated (no seed + has domain), store in question_bank
-    // for future candidates. Fire-and-forget — do not await.
-    if (!seed && session.domain) {
+    // Auto-cache: if actually domain-generated (no seed + has domain + technical
+    // round — same gate as generate() above), store in question_bank for future
+    // candidates. Fire-and-forget — do not await. Must match the generate() gate
+    // exactly, or an HR/behavioral question (generated via generateNextQuestion)
+    // would get miscategorized as a technical domain seed for future sessions.
+    if (!seed && session.domain && isTechnicalRound) {
       sql`
         INSERT INTO question_bank (company_id, question_text, round_type, domain, expected_signals, difficulty, tags, ideal_keywords)
         VALUES ('generic', ${question}, ${session.round_type}, ARRAY[${domainSlug}], '{}', 3, '{}', '{}')

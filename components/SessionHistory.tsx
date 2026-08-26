@@ -25,20 +25,20 @@ function RecommendationBadge({ rec }: { rec: string | null }) {
         In Progress
       </Badge>
     );
-  if (rec === "Strong Hire")
+  if (rec === "Strong Hire" || rec === "Hire")
     return (
-      <Badge className="text-xs bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20">
+      <Badge className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100">
         {rec}
       </Badge>
     );
   if (rec === "Borderline")
     return (
-      <Badge className="text-xs bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/20">
+      <Badge className="text-xs bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100">
         {rec}
       </Badge>
     );
   return (
-    <Badge className="text-xs bg-red-500/15 text-red-400 border border-red-500/30 hover:bg-red-500/20">
+    <Badge className="text-xs bg-red-50 text-red-700 border border-red-200 hover:bg-red-100">
       {rec}
     </Badge>
   );
@@ -112,7 +112,7 @@ export default function SessionHistory() {
                 </span>
               </div>
             </div>
-            <Button asChild variant="ghost" size="sm" className="shrink-0 gap-1">
+            <Button asChild variant="ghost" size="sm" className="shrink-0 gap-1 h-[44px]">
               <Link href={`/debrief/${s.id}`}>
                 {s.hire_recommendation ? "View Debrief" : "Resume"}
                 <ArrowRight className="w-3 h-3" />

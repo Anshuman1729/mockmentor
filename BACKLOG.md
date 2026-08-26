@@ -5,6 +5,36 @@
 
 ---
 
+## ✅ Done (Overnight session — `feat/phase2-2.5`, debrief/UI redesign)
+
+Worked autonomously per user direction from the end of the previous session's brainstorm
+(`docs/session-handoff-2026-08-26.md`, Findings #1-5). Verified via `tsc`/`eslint`/`vitest`
+after every change, plus persona-based review agents (4 total, across senior-engineer,
+career-switcher, new-grad, and PM personas) actually browsing the rendered pages via
+Playwright and reporting back real UX friction — not just self-review.
+
+| Task | Notes |
+|---|---|
+| **Finding #1 — render the already-built MetricCard** | Was fully built (`what`/`why`/`bench`/`yours` per metric) but the live render only showed a stripped inline version. Swapped in. |
+| **Finding #2 — question walkthrough** | New `question_walkthrough` field on `DebriefReport` (`lib/groq.ts`) — one entry per answered question, each stating what happened AND its hire-decision implication. Rendered as a numbered timeline, first content section after the verdict. |
+| **Finding #3 — implication, not just observation** | `generateDebrief` system prompt now requires every `skill_analysis[].reasoning` to state the interview consequence, not just describe behavior. |
+| **Finding #4 — deterministic frameworks** | New `SIGNAL_FRAMEWORKS` table in `lib/rubric-researched.ts` (same "deterministic where possible" philosophy as `hire_probability`) — one framework + steps per signal, surfaced on any rating ≤3. |
+| **Finding #5 — model answers** | New `model_answers` field — 1-2 entries for the weakest signal(s), each a concrete rewritten answer grounded in the actual question asked (reuses the transcript context `generateDebrief` already had). |
+| **Debrief visual redesign** | Restrained emerald/amber/red/gray palette replacing the blue-heavy generic-SaaS look; numbered section headings; every signal card explains itself via a plain-English blurb regardless of score (jargon like STAR/SNR was previously unexplained on high-scoring cards). |
+| **Fixed: permanently-stuck verdict banner** | `position: sticky` with no bounded parent height pinned the black "Interview Outcome" card over all content for the entire scroll, both mobile and desktop. Caught independently by two persona reviews before a real user would have. Removed. |
+| **Fixed: double navbar on homepage** | Root layout's generic header was rendering on top of the homepage's own custom nav. Split into a bare root layout + `(app)` route-group layout for dashboard/debrief/interview/sign-in/sign-up. |
+| **Fixed: SessionHistory badge contrast + "Hire" mis-colored** | `RecommendationBadge` used dark-mode text colors on a white card (illegible), and any non-"Strong Hire"/non-"Borderline" result — including plain "Hire" — fell through to the red/danger badge. |
+| **Above-the-fold summary** | A "Bottom line" line in the verdict banner + a quick-nav anchor row, so a first-time reader has something to act on before scrolling a long report (flagged by PM-persona review). |
+| **`/dev/debrief` mock preview** | New DB-free preview route (`?scenario=strong` / `?scenario=nohire` variants) mirroring the `/dev/loading` pattern — lets the whole redesign be visually verified without a live database or LLM call. |
+| **`DebriefLoadingScreen` deduplication** | Was byte-identical in `InterviewRoom.tsx` and `/dev/loading` — extracted to `components/DebriefLoadingScreen.tsx` so the two can't drift. |
+| **#10/#11 UI surfacing** | `answer_duration_sec` (longest monologue) and `candidate_questions_asked` now injected into `debrief.metrics` in the debrief route and rendered as plain, ungraded stat tiles — no invented benchmark, since neither has research backing yet unlike the four existing metric cards. |
+
+### Still open from this pass
+- **Sarvam STT realtime WebSocket** — deliberately not attempted (see previous handoff); needs a human present to decide browser-direct-vs-proxied architecture and test against a real key.
+- Dashboard/`SetupForm` got a lighter consistency pass (dropped the generic blue "AI Setup" pill, matched card styling to the homepage) but wasn't redesigned as deeply as the debrief — the highest-leverage surface for now was the debrief per explicit user feedback.
+
+---
+
 ## ✅ Done (Session — 2026-03-06, Landing Page)
 
 | Task | Notes |
@@ -143,30 +173,26 @@
 - Add upgrade CTA below blurred signals
 - **Complexity**: S | **Deps**: #1, Clerk plan metadata setup
 
-### 7. Adaptive Waveform Animation (Reacts to Mic Input)
-- Current waveform is CSS-only (fixed pulse, doesn't reflect actual audio)
-- Use `AudioContext` + `AnalyserNode` on the mic stream to get real-time frequency data
-- Drive bar heights from `getByteFrequencyData()` on each animation frame
-- **Complexity**: S | **Deps**: None (mic stream already available in `useAudioRecorder.ts`)
+### 7. Adaptive Waveform Animation (Reacts to Mic Input) ✅ Done (2026-08-26)
+- Built as `components/VoiceOrb.tsx` — canvas-based, not the originally-imagined bars, but same mechanism: real `AnalyserNode.getByteFrequencyData()` amplitude driving the animation on every `requestAnimationFrame`, not a fixed CSS pulse.
+- Goes further than the original ask: reacts to the mic stream (`useAudioRecorder.ts`'s new `analyserRef`) while listening AND to the TTS output (`useTTS.ts`'s new `analyserRef`, tapped off the `<audio>` element via `createMediaElementSource`) while speaking. Falls back to a gentle synthetic breathing animation when no analyser is available yet, so it never looks frozen.
 
-### 8. TTS Speed Control (1x / 1.5x / 2x) + Mute Toggle
-- User feedback: TTS slightly slow; wants speed option and mute
-- Add speed multiplier to `useTTS.ts` and `/api/tts` or client-side HTML5 Audio `playbackRate`
-- Add mute toggle button in InterviewRoom controls bar
-- **Complexity**: S | **Deps**: None
+### 8. TTS Speed Control (1x / 1.5x / 2x) + Mute Toggle ✅ Done
+- Already implemented (see commit `1fe9319`, predates this backlog check) — `useTTS.ts` has `cycleRate`/`rate` (0.75x/1x/1.25x/1.5x, persisted to localStorage) and `toggleMute`/`muted`, both exposed as buttons in `InterviewRoom.tsx`'s controls bar. This item was stale in the backlog, not actually pending.
 
 ### 9. Outcome Tracking ✅ Done (API complete, UI pending)
 - `/api/sessions/[sessionId]/outcome` POST endpoint done
 - Still needed: "Did you get the job?" prompt after 2 weeks (email or in-app)
 - **Target**: Start tracking after 50 paying users
 
-### 10. Longest Monologue Tracking ✅ Done (instrumentation complete, UI pending)
-- `qa_pairs.answer_duration_sec` stored per answer
-- Still needed: Surface longest monologue in conversational metrics card in `DebriefReport.tsx`
+### 10. Longest Monologue Tracking ✅ Done (2026-08-27)
+- `qa_pairs.answer_duration_sec` stored per answer; debrief route now takes the max across the
+  session and injects it as `debrief.metrics.longest_monologue_sec`, rendered as a plain stat
+  tile in `DebriefReport.tsx`'s Conversational Metrics section.
 
-### 11. Question Rate Tracking ✅ Done (instrumentation complete, UI pending)
-- `sessions.candidate_questions_asked` stored
-- Still needed: Surface in conversational metrics card in `DebriefReport.tsx`
+### 11. Question Rate Tracking ✅ Done (2026-08-27)
+- `sessions.candidate_questions_asked` stored; debrief route now injects it as
+  `debrief.metrics.candidate_questions_asked`, rendered alongside #10 above.
 
 ### 12. Few-Shot Prompting ✅ Done
 - 3 examples (Strong Hire / No Hire / Borderline) injected in `generateDebrief()` system prompt

@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import JDFallback from "./JDFallback";
 
 const COMPANY_STAGES = ["Seed", "Series A", "Series B", "Public"];
@@ -148,14 +148,7 @@ export default function SetupForm() {
   }
 
   return (
-    <Card className="w-full max-w-xl shadow-lg">
-      <CardHeader>
-        <CardTitle className="text-2xl">Start Your Mock Interview</CardTitle>
-        <CardDescription>
-          Fill in your details and we&apos;ll run a personalized mock
-          interview tailored to the job description.
-        </CardDescription>
-      </CardHeader>
+    <Card className="w-full max-w-xl rounded-3xl border-gray-100 shadow-2xl shadow-gray-200/50 py-8">
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -167,6 +160,8 @@ export default function SetupForm() {
                 value={form.role}
                 onChange={(e) => handleChange("role", e.target.value)}
                 required
+                aria-required="true"
+                aria-describedby={error ? "form-error" : undefined}
               />
             </div>
             <div className="space-y-2">
@@ -177,6 +172,8 @@ export default function SetupForm() {
                 value={form.company}
                 onChange={(e) => handleChange("company", e.target.value)}
                 required
+                aria-required="true"
+                aria-describedby={error ? "form-error" : undefined}
               />
             </div>
           </div>
@@ -193,6 +190,8 @@ export default function SetupForm() {
                 value={form.yoe}
                 onChange={(e) => handleChange("yoe", e.target.value)}
                 required
+                aria-required="true"
+                aria-describedby={error ? "form-error" : undefined}
               />
             </div>
             <div className="space-y-2">
@@ -201,7 +200,7 @@ export default function SetupForm() {
                 value={form.round_type}
                 onValueChange={(v) => handleChange("round_type", v)}
               >
-                <SelectTrigger id="round">
+                <SelectTrigger id="round" className="min-h-[44px]" aria-required="true" aria-describedby={error ? "form-error" : undefined}>
                   <SelectValue placeholder="Select round" />
                 </SelectTrigger>
                 <SelectContent>
@@ -264,19 +263,21 @@ export default function SetupForm() {
               onChange={(e) => handleResumeChange(e.target.files?.[0] ?? null)}
               className="cursor-pointer"
             />
-            {parsingResume && (
-              <p className="text-xs text-muted-foreground">Reading resume…</p>
-            )}
-            {resumeParsed && !parsingResume && (
-              <p className="text-xs text-green-600 font-medium">
-                Resume parsed ({resumeParsed.length.toLocaleString()} chars) — AI will use it to personalise questions.
-              </p>
-            )}
-            {!resumeParsed && !parsingResume && (
-              <p className="text-xs text-muted-foreground">
-                Upload your resume so the AI can ask relevant follow-ups and give personalised feedback.
-              </p>
-            )}
+            <div aria-live="polite">
+              {parsingResume && (
+                <p className="text-xs text-muted-foreground">Reading resume…</p>
+              )}
+              {resumeParsed && !parsingResume && (
+                <p className="text-xs text-green-600 font-medium">
+                  Resume parsed ({resumeParsed.length.toLocaleString()} chars) — AI will use it to personalise questions.
+                </p>
+              )}
+              {!resumeParsed && !parsingResume && (
+                <p className="text-xs text-muted-foreground">
+                  Upload your resume so the AI can ask relevant follow-ups and give personalised feedback.
+                </p>
+              )}
+            </div>
           </div>
 
           {!showFallback && (
@@ -302,18 +303,18 @@ export default function SetupForm() {
           )}
 
           {jdContent && !showFallback && (
-            <p className="text-sm text-green-600 font-medium">
+            <p className="text-sm text-green-600 font-medium" aria-live="polite">
               Job description fetched ({jdContent.length.toLocaleString()} chars)
             </p>
           )}
 
           {error && (
-            <p className="text-sm text-red-600">{error}</p>
+            <p id="form-error" role="alert" className="text-sm text-red-600">{error}</p>
           )}
 
           <Button
             type="submit"
-            className="w-full"
+            className="w-full h-[44px]"
             disabled={fetchingJD || submitting}
           >
             {fetchingJD

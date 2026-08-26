@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateNormalizedScore } from '../lib/rubric-researched';
+import { calculateNormalizedScore, INTERVIEW_RUBRIC, SIGNAL_FRAMEWORKS } from '../lib/rubric-researched';
 
 describe('rubric-researched', () => {
   it('calculates Senior score correctly', () => {
@@ -17,5 +17,17 @@ describe('rubric-researched', () => {
     expect(typeof result).toBe('number');
     expect(result).toBeGreaterThan(0);
     expect(result).toBeLessThanOrEqual(100);
+  });
+
+  it('SIGNAL_FRAMEWORKS covers exactly the 8 rubric signals, each with steps and a how-to', () => {
+    const rubricIds = Object.keys(INTERVIEW_RUBRIC).sort();
+    const frameworkIds = Object.keys(SIGNAL_FRAMEWORKS).sort();
+    expect(frameworkIds).toEqual(rubricIds);
+    for (const id of frameworkIds) {
+      const f = SIGNAL_FRAMEWORKS[id];
+      expect(f.name.length).toBeGreaterThan(0);
+      expect(f.steps.length).toBeGreaterThan(1);
+      expect(f.howToApply.length).toBeGreaterThan(0);
+    }
   });
 });
