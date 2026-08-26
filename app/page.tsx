@@ -26,8 +26,15 @@ export default async function LandingPage() {
       </nav>
 
       <main>
-        {/* Hero — user-first, concrete, no AI slop */}
-        <section className="mx-auto max-w-6xl px-6 pt-24 pb-16 md:pt-36 md:pb-24">
+        {/* Hero — user-first, concrete, no AI slop. Right side is a photo of
+            someone from the actual ICP (young professional / student doing
+            a practice interview) — not a founder or an abstract UI mockup —
+            with a small floating proof card so the product's value is still
+            visible at a glance. Photo is a placeholder pending the
+            Higgsfield connector (signed out this session) generating the
+            agreed AI stand-in image; swap the gradient block for a real
+            <Image> once one exists. */}
+        <section className="mx-auto max-w-6xl px-6 pt-24 pb-16 md:pt-32 md:pb-24">
           <div className="grid gap-12 md:grid-cols-2 md:items-center md:gap-16 lg:gap-20">
             <div className="space-y-8">
               <h1 className="text-5xl font-extrabold leading-[1.1] tracking-tight text-gray-950 md:text-6xl lg:text-7xl">
@@ -59,10 +66,88 @@ export default async function LandingPage() {
                 <span className="flex items-center gap-2"><Clock className="w-4 h-4" /> Under 30 min</span>
                 <span className="flex items-center gap-2"><Award className="w-4 h-4" /> 8 signals scored</span>
               </div>
+              {/* Concrete self-identification for the ICP — a first-timer
+                  scanning the page for "is this for someone like me?" gets a
+                  direct yes instead of having to infer it from the copy. */}
+              <div className="flex flex-wrap gap-2 pt-2">
+                {["Campus placements", "First job hunt", "First technical interview", "Career switch"].map((tag) => (
+                  <span key={tag} className="rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-500">
+                    {tag}
+                  </span>
+                ))}
+              </div>
             </div>
 
-            {/* Right: concrete mock debrief preview */}
+            {/* Right: a real person from the ICP, not a founder or a chart */}
             <div className="relative">
+              <div
+                className="aspect-[4/5] w-full rounded-3xl bg-gradient-to-br from-gray-200 via-gray-100 to-gray-300 shadow-2xl shadow-gray-200/50"
+                role="img"
+                aria-label="Photo of a candidate practicing an interview with PrepSignals"
+              />
+              {/* Floating proof chip — keeps the "this is a real evidence
+                  engine" signal without the hero being a UI screenshot */}
+              <div className="absolute -bottom-6 -left-6 w-56 rounded-2xl border border-gray-100 bg-white p-4 shadow-xl shadow-gray-300/40 sm:-left-10">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Their debrief</p>
+                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700">Hire</span>
+                </div>
+                <blockquote className="mt-2 text-xs font-medium leading-snug text-gray-800">
+                  &ldquo;Fixed the exact gap that cost me my last interview.&rdquo;
+                </blockquote>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Pain — the real problem, framed as something we fix together,
+            not a scare tactic aimed at someone already anxious about their
+            first interview. */}
+        <section id="how" className="w-full bg-gray-950 py-20 md:py-28">
+          <div className="mx-auto max-w-5xl px-6">
+            <div className="max-w-2xl">
+              <h2 className="text-3xl font-extrabold tracking-tight text-white md:text-5xl">Most candidates never find out what actually went wrong.</h2>
+              <p className="mt-6 text-lg leading-relaxed text-gray-400 md:text-xl">Interviewers evaluate on specifics — a clear story, a real number, you owning a decision — not just whether you sounded confident. You can answer every question and still lose the offer without knowing why. PrepSignals shows you exactly which moments cost you, in plain language, before the real interview.</p>
+            </div>
+            <div className="mt-12 grid gap-6 md:grid-cols-3">
+              {[
+                { step: "01", title: "Paste your job description", desc: "We pull the role, company stage, and domain so questions match your actual interview." },
+                { step: "02", title: "Speak naturally", desc: "Voice-first mock interview. We transcribe with bias correction for Indian English and domain jargon." },
+                { step: "03", title: "Get the signal report", desc: "8 signals scored with verbatim quotes, conversation metrics, and a 4-bucket recommendation." },
+              ].map((item) => (
+                <div key={item.step} className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:bg-white/[0.07] transition-colors">
+                  <span className="text-xs font-extrabold text-gray-500">STEP {item.step}</span>
+                  <h3 className="mt-3 text-xl font-bold text-white">{item.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-gray-400">{item.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Proof — concrete, no generic badges. The full report mockup now
+            lives here as supporting evidence (moved out of the hero, which
+            leads with a real person instead). */}
+        <section id="proof" className="w-full bg-gray-50 py-20 md:py-28 border-t border-gray-100">
+          <div className="mx-auto max-w-5xl px-6">
+            <h2 className="text-3xl font-extrabold tracking-tight text-gray-950 md:text-4xl">Built for candidates who take this seriously — including your first one.</h2>
+            <p className="mt-4 text-lg text-gray-500">Not generic AI chat. A structured interview simulator that grades on evidence, not vibes.</p>
+
+            <div className="mt-12 grid gap-10 lg:grid-cols-2 lg:items-center lg:gap-16">
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-1">
+                {[
+                  { title: "Backed by your own words", desc: "Every rating links back to a direct quote from your answer — never an opaque number you have to just trust." },
+                  { title: "8 things that actually matter", desc: "Technical depth, story structure, business impact, ownership, communication, adaptability, and more — the same things a real interviewer is quietly scoring." },
+                  { title: "Real benchmarks, explained", desc: "How much you talk vs. listen, how fast you respond, how many times you interrupt — each one explained in plain terms, backed by interview research." },
+                ].map((feat) => (
+                  <div key={feat.title} className="rounded-3xl border border-gray-200 bg-white p-8 shadow-sm shadow-gray-200/30">
+                    <h3 className="text-lg font-extrabold text-gray-950">{feat.title}</h3>
+                    <p className="mt-3 text-sm leading-relaxed text-gray-500">{feat.desc}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* What the report actually looks like */}
               <div className="rounded-3xl border border-gray-100 bg-white p-6 shadow-2xl shadow-gray-200/50 md:p-8">
                 <div className="mb-4 flex items-center justify-between">
                   <div>
@@ -100,74 +185,8 @@ export default async function LandingPage() {
           </div>
         </section>
 
-        {/* Pain — serious, no generic AI copy */}
-        <section id="how" className="w-full bg-gray-950 py-20 md:py-28">
-          <div className="mx-auto max-w-5xl px-6">
-            <div className="max-w-2xl">
-              <h2 className="text-3xl font-extrabold tracking-tight text-white md:text-5xl">Most candidates never find out what actually went wrong.</h2>
-              <p className="mt-6 text-lg leading-relaxed text-gray-400 md:text-xl">Interviewers evaluate on specifics — a clear story, a real number, you owning a decision — not just whether you sounded confident. You can answer every question and still lose the offer without knowing why. PrepSignals shows you exactly which moments cost you, in plain language, before the real interview.</p>
-            </div>
-            <div className="mt-12 grid gap-6 md:grid-cols-3">
-              {[
-                { step: "01", title: "Paste your job description", desc: "We pull the role, company stage, and domain so questions match your actual interview." },
-                { step: "02", title: "Speak naturally", desc: "Voice-first mock interview. We transcribe with bias correction for Indian English and domain jargon." },
-                { step: "03", title: "Get the signal report", desc: "8 signals scored with verbatim quotes, conversation metrics, and a 4-bucket recommendation." },
-              ].map((item) => (
-                <div key={item.step} className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:bg-white/[0.07] transition-colors">
-                  <span className="text-xs font-extrabold text-gray-500">STEP {item.step}</span>
-                  <h3 className="mt-3 text-xl font-bold text-white">{item.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-gray-400">{item.desc}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Proof — concrete, no generic badges */}
-        <section id="proof" className="w-full bg-gray-50 py-20 md:py-28 border-t border-gray-100">
-          <div className="mx-auto max-w-5xl px-6">
-            <h2 className="text-3xl font-extrabold tracking-tight text-gray-950 md:text-4xl">Built for candidates who take this seriously — including your first one.</h2>
-            <p className="mt-4 text-lg text-gray-500">Not generic AI chat. A structured interview simulator that grades on evidence, not vibes.</p>
-            <div className="mt-12 grid gap-6 md:grid-cols-3">
-              {[
-                { title: "Backed by your own words", desc: "Every rating links back to a direct quote from your answer — never an opaque number you have to just trust." },
-                { title: "8 things that actually matter", desc: "Technical depth, story structure, business impact, ownership, communication, adaptability, and more — the same things a real interviewer is quietly scoring." },
-                { title: "Real benchmarks, explained", desc: "How much you talk vs. listen, how fast you respond, how many times you interrupt — each one explained in plain terms, backed by interview research." },
-              ].map((feat) => (
-                <div key={feat.title} className="rounded-3xl border border-gray-200 bg-white p-8 shadow-sm shadow-gray-200/30">
-                  <h3 className="text-lg font-extrabold text-gray-950">{feat.title}</h3>
-                  <p className="mt-3 text-sm leading-relaxed text-gray-500">{feat.desc}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Founder note — a real face behind the product. Direct product ask:
-            an AI feedback tool is easier to trust when there's a person
-            attached to it, not just a logo. Photo is a placeholder pending
-            an actual photo (or an AI-generated stand-in — the Higgsfield
-            connector needed for that was signed out this session; swap the
-            gradient block below for a real <Image> once one exists). */}
-        <section className="w-full bg-white py-20 md:py-28 border-t border-gray-100">
-          <div className="mx-auto max-w-4xl px-6">
-            <div className="grid gap-8 rounded-3xl border border-gray-100 bg-gray-50 p-8 shadow-sm shadow-gray-100/40 md:grid-cols-[auto_1fr] md:items-center md:gap-10 md:p-10">
-              <div
-                className="mx-auto h-28 w-28 shrink-0 rounded-2xl bg-gradient-to-br from-gray-300 via-gray-200 to-gray-400 md:mx-0 md:h-32 md:w-32"
-                role="img"
-                aria-label="Photo of PrepSignals' founder"
-              />
-              <div>
-                <p className="text-lg font-medium leading-relaxed text-gray-950 md:text-xl">
-                  &ldquo;I built this because my own first interviews went badly for reasons nobody explained to me at the time. Not a lack of knowledge — a lack of specific, honest feedback. PrepSignals is the debrief I wish someone had given me before I walked in.&rdquo;
-                </p>
-                <p className="mt-4 text-sm font-bold text-gray-950">Founder, PrepSignals</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Testimonials — serious, specific */}
+        {/* Testimonials — first-timer voice leads, since that's who this
+            page needs to convince it's for. */}
         <section className="w-full bg-white py-20 md:py-28 border-t border-gray-100">
           <div className="mx-auto max-w-4xl px-6">
             <div className="grid gap-6 md:grid-cols-2">
@@ -194,7 +213,7 @@ export default async function LandingPage() {
         <section className="w-full bg-gray-950 py-20 md:py-28">
           <div className="mx-auto max-w-3xl px-6 text-center">
             <h2 className="text-3xl font-extrabold tracking-tight text-white md:text-5xl">Find your signal gap before the offer.</h2>
-            <p className="mt-6 text-lg text-gray-400">Free mock interview. Full evidence debrief. No credit card.</p>
+            <p className="mt-6 text-lg text-gray-400">Free mock interview. Full evidence debrief. No credit card. No experience needed — we&apos;ll walk you through it.</p>
             <div className="mt-10 flex flex-wrap justify-center gap-4">
               {!isSignedIn ? (
                 <Link href="/sign-up" className="inline-flex items-center gap-2 rounded-full bg-white px-8 py-4 text-base font-extrabold text-gray-950 shadow-2xl shadow-white/10 hover:bg-gray-100 transition-all hover:-translate-y-0.5">
