@@ -63,6 +63,12 @@ export function useSTT() {
 
   useEffect(() => {
     const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    // One-time browser-capability check on mount, not a value driven by an
+    // external subscription — a lazy useState initializer would read
+    // `window` during SSR and mismatch the hydrated client render, so this
+    // intentionally stays an effect rather than following the rule's usual
+    // "derive at render time" guidance.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!SR) { setIsSupported(false); return; }
     setIsSupported(true);
     SRClassRef.current = SR;
