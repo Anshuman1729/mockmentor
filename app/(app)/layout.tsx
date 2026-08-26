@@ -1,26 +1,23 @@
 import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
+import AppNav from "@/components/AppNav";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-gray-100 bg-white/80 backdrop-blur-md px-4 sm:px-6 py-4">
+      <header className="sticky top-0 z-40 border-b border-gray-100 bg-white/80 backdrop-blur-md px-4 sm:px-6 py-3.5 shadow-sm shadow-gray-100/50">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <Link href="/" className="text-lg font-extrabold tracking-tight text-gray-950">
             PrepSignals
           </Link>
-          <div className="flex items-center gap-5">
-            <Link href="/dashboard" className="text-sm font-medium text-gray-500 hover:text-gray-950 transition-colors">
-              Start Interview
-            </Link>
-            <Link href="/progress" className="text-sm font-medium text-gray-500 hover:text-gray-950 transition-colors">
-              My Progress
-            </Link>
+          <div className="flex items-center gap-4">
+            <AppNav />
+            <div className="h-6 w-px bg-gray-200" aria-hidden="true" />
             <UserButton />
           </div>
         </div>
       </header>
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10">{children}</main>
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-12">{children}</main>
     </>
   );
 }

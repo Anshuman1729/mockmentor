@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ComponentProps } from "react";
+import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import { SIGNAL_META, computeSignalTrends, type SkillRating } from "@/lib/signals";
 import { RecommendationBadge } from "@/components/SessionHistory";
 import SessionHistory from "@/components/SessionHistory";
@@ -98,6 +98,34 @@ function SignalArrow({ trend }: { trend: "up" | "down" | "flat" }) {
   return <span className="text-gray-300 font-bold" aria-label="steady">→</span>;
 }
 
+// A 2-column grid with a collapse point — without this, a session where
+// every signal happens to move the same direction (common early on, when
+// even a small jump off a rough first session reads as "improved") turns
+// into a full-width wall of 6-8 near-identical cards, which is exactly the
+// "looks ugly" failure mode: technically correct, visually monotonous.
+function SignalCardGrid({ items, cap = 6 }: { items: { key: string; content: ReactNode }[]; cap?: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? items : items.slice(0, cap);
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {visible.map((item) => (
+          <div key={item.key}>{item.content}</div>
+        ))}
+      </div>
+      {items.length > cap && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="text-xs font-semibold text-gray-500 hover:text-gray-900 underline underline-offset-4 decoration-gray-300 hover:decoration-gray-500 transition-colors"
+        >
+          {expanded ? "Show fewer" : `Show ${items.length - cap} more`}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // `initialSessions` lets a DB-free preview (see /dev/progress) inject mock
 // data instead of hitting the network — same pattern as DebriefReportView
 // taking props directly rather than fetching itself, and as SessionHistory's
@@ -149,7 +177,7 @@ export default function ProgressDashboard({
   const stageBreakdown = buildGroupBreakdown(sessions, "company_stage");
 
   return (
-    <div className="space-y-10 max-w-2xl mx-auto w-full pb-16">
+    <div className="space-y-12 max-w-4xl mx-auto w-full pb-16">
       {/* Stats strip */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-gray-100 bg-white p-4">
@@ -168,44 +196,54 @@ export default function ProgressDashboard({
 
       {sessions.length < 3 && <SparseState count={sessions.length} />}
 
-      {chronic.length > 0 && (
-        <div className="space-y-3">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900">Still showing up, interview after interview</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Weak in your last 2+ sessions and not yet improving — these are worth deliberately drilling before your next real interview.</p>
-          </div>
-          <div className="space-y-2">
-            {chronic.map((t) => {
-              const meta = SIGNAL_META[t.parameter_id];
-              return (
-                <div key={t.parameter_id} className="rounded-lg border-l-2 border-l-red-300 bg-red-50/40 border border-red-200/70 px-4 py-3">
-                  <p className="text-sm font-semibold text-gray-900">{meta?.name ?? t.parameter_id}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{meta?.blurb}</p>
-                  <p className="text-xs text-red-700 mt-1 font-medium">Weak for {t.streak} session{t.streak !== 1 ? "s" : ""} in a row</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {(chronic.length > 0 || improving.length > 0) && (
+        <div className="space-y-8">
+          {chronic.length > 0 && (
+            <div className="space-y-3">
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Still showing up, interview after interview</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Weak in your last 2+ sessions and not yet improving — worth deliberately drilling before your next real interview.</p>
+              </div>
+              <SignalCardGrid
+                items={chronic.map((t) => {
+                  const meta = SIGNAL_META[t.parameter_id];
+                  return {
+                    key: t.parameter_id,
+                    content: (
+                      <div className="h-full rounded-lg border-l-2 border-l-red-300 bg-red-50/40 border border-red-200/70 px-4 py-3">
+                        <p className="text-sm font-semibold text-gray-900">{meta?.name ?? t.parameter_id}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{meta?.blurb}</p>
+                        <p className="text-xs text-red-700 mt-1 font-medium">Weak for {t.streak} session{t.streak !== 1 ? "s" : ""} in a row</p>
+                      </div>
+                    ),
+                  };
+                })}
+              />
+            </div>
+          )}
 
-      {improving.length > 0 && (
-        <div className="space-y-3">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900">What&apos;s getting better</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Scored higher this time than your immediately preceding session.</p>
-          </div>
-          <div className="space-y-2">
-            {improving.map((t) => {
-              const meta = SIGNAL_META[t.parameter_id];
-              return (
-                <div key={t.parameter_id} className="rounded-lg border-l-2 border-l-emerald-300 bg-emerald-50/40 border border-emerald-200/70 px-4 py-3">
-                  <p className="text-sm font-semibold text-gray-900">{meta?.name ?? t.parameter_id}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{meta?.blurb}</p>
-                </div>
-              );
-            })}
-          </div>
+          {improving.length > 0 && (
+            <div className="space-y-3">
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">What&apos;s getting better</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Scored higher this time than your immediately preceding session.</p>
+              </div>
+              <SignalCardGrid
+                items={improving.map((t) => {
+                  const meta = SIGNAL_META[t.parameter_id];
+                  return {
+                    key: t.parameter_id,
+                    content: (
+                      <div className="h-full rounded-lg border-l-2 border-l-emerald-300 bg-emerald-50/40 border border-emerald-200/70 px-4 py-3">
+                        <p className="text-sm font-semibold text-gray-900">{meta?.name ?? t.parameter_id}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{meta?.blurb}</p>
+                      </div>
+                    ),
+                  };
+                })}
+              />
+            </div>
+          )}
         </div>
       )}
 

@@ -150,7 +150,9 @@ export default function SetupForm() {
   return (
     <Card className="w-full max-w-xl rounded-3xl border-gray-100 shadow-2xl shadow-gray-200/50 py-8">
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-8">
+          <div className="space-y-5">
+            <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase">The Basics</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="role">Target Role</Label>
@@ -216,7 +218,10 @@ export default function SetupForm() {
               </p>
             </div>
           </div>
+          </div>
 
+          <div className="space-y-5 border-t border-gray-100 pt-6">
+            <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase">Extra Context <span className="normal-case text-gray-300">— optional, helps personalize questions</span></p>
           <div className="space-y-2">
             <Label htmlFor="company_stage">
               Company Stage <span className="text-muted-foreground font-normal">(optional)</span>
@@ -282,7 +287,10 @@ export default function SetupForm() {
               )}
             </div>
           </div>
+          </div>
 
+          <div className="space-y-5 border-t border-gray-100 pt-6">
+            <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase">Job Description</p>
           {!showFallback && (
             <div className="space-y-2">
               <Label htmlFor="jd_url">Job Description URL</Label>
@@ -310,6 +318,7 @@ export default function SetupForm() {
               Job description fetched ({jdContent.length.toLocaleString()} chars)
             </p>
           )}
+          </div>
 
           {error && (
             <p id="form-error" role="alert" className="text-sm text-red-600">{error}</p>
