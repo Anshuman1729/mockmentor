@@ -404,16 +404,6 @@ const FEW_SHOT_EXAMPLES = `
       "question_number": 1,
       "key_takeaway": "Opened with a specific rebalancing latency fix (8s to 400ms) instead of a generic self-intro — immediately signaled hands-on ownership of production systems, the kind of concrete detail that earns trust in the first 60 seconds of a screen.",
       "signal_ids": ["TECHNICAL_DEPTH", "RESULT_ORIENTATION"]
-    },
-    {
-      "question_number": 2,
-      "key_takeaway": "Named the exactly-once vs at-least-once trade-off unprompted, which is the difference an interviewer uses to separate 'has used Kafka' from 'understands Kafka' — this is the single strongest technical moment in the transcript.",
-      "signal_ids": ["TECHNICAL_DEPTH", "PROBLEM_SOLVING"]
-    },
-    {
-      "question_number": 3,
-      "key_takeaway": "Closed the migration story with a paired metric (p99 340ms→90ms, cost -23%) rather than stopping at 'it went well' — this is exactly the Impact step most candidates skip, and its presence here is why Result Orientation scored a 5.",
-      "signal_ids": ["RESULT_ORIENTATION", "STAR_ALIGNMENT"]
     }
   ],
   "priority_risks": [],
@@ -470,11 +460,6 @@ const FEW_SHOT_EXAMPLES = `
       "question_number": 1,
       "key_takeaway": "Named Kubernetes and microservices but justified the choice with 'industry standard' rather than a reason tied to the system's actual constraints — an interviewer hears this as pattern-matching on buzzwords, not engineering judgment, which is why this sets a low ceiling before the interview has really started.",
       "signal_ids": ["TECHNICAL_DEPTH"]
-    },
-    {
-      "question_number": 2,
-      "key_takeaway": "The explanation looped back on itself twice before reaching a conclusion — a real interviewer would have to work to extract the actual point, which reads as unprepared even if the underlying work was fine.",
-      "signal_ids": ["COMMUNICATION_SNR"]
     }
   ],
   "priority_risks": [
@@ -521,83 +506,7 @@ const FEW_SHOT_EXAMPLES = `
   }
 }
 
---- Example 3: Borderline (COMMUNICATION_SNR 4, TECHNICAL_DEPTH 2) ---
-{
-  "summary": {
-    "recommendation": "Borderline",
-    "hire_probability": 0,
-    "overall_impression": "I'd want a second, more technical opinion before deciding — communication and reasoning are genuinely strong, but I don't yet have enough evidence this candidate can operate at the systems depth the role needs."
-  },
-  "metrics": {
-    "talk_to_listen_ratio": "62/38",
-    "avg_response_latency_sec": 2.0,
-    "signal_to_noise_ratio": 0.22,
-    "interruption_count": 0
-  },
-  "skill_analysis": [
-    {
-      "parameter_id": "COMMUNICATION_SNR",
-      "rating": 4,
-      "reasoning": "Answers were answer-first with minimal filler. Candidate paused to structure thoughts before responding.",
-      "evidence_quotes": [
-        "Short answer: we chose Postgres over DynamoDB because our access patterns were relational and we needed joins",
-        "The trade-off was write throughput — we accepted that and scaled reads with read replicas"
-      ]
-    },
-    {
-      "parameter_id": "TECHNICAL_DEPTH",
-      "rating": 2,
-      "reasoning": "Surface-level responses on system internals. Could not explain indexing strategy or query planner behavior when probed.",
-      "evidence_quotes": [
-        "I just added an index on the column and it got faster — I didn't look too deeply into why",
-        "I've heard of B-tree indexes but I'm not sure exactly how they work under the hood"
-      ]
-    }
-  ],
-  "question_walkthrough": [
-    {
-      "question_number": 4,
-      "key_takeaway": "Gave a clean answer-first justification for Postgres over DynamoDB with the actual access-pattern reasoning — this is the strongest moment in the transcript and shows the communication skill is real, not just polish.",
-      "signal_ids": ["COMMUNICATION_SNR", "PROBLEM_SOLVING"]
-    },
-    {
-      "question_number": 6,
-      "key_takeaway": "Admitted not knowing how B-tree indexes work under the hood when probed — the honesty is a plus for trust, but for a senior-level bar this is exactly the depth gap that would surface again in a real system design round.",
-      "signal_ids": ["TECHNICAL_DEPTH"]
-    }
-  ],
-  "priority_risks": [
-    {
-      "title": "Depth ceiling",
-      "description": "Can name and use the right tool but hasn't gone one layer deeper into how or why it works — fine for a mid-level bar, a real gap at the senior bar this role needs.",
-      "related_signal_ids": ["TECHNICAL_DEPTH"]
-    }
-  ],
-  "model_answers": [
-    {
-      "question_number": 6,
-      "parameter_id": "TECHNICAL_DEPTH",
-      "your_quote": "I've heard of B-tree indexes but I'm not sure exactly how they work under the hood",
-      "why_it_hurt": "Honesty about a gap builds trust, but for a senior-level bar this is exactly the depth an interviewer needs to see, and its absence caps the score regardless of how well the rest of the answer was delivered.",
-      "framework": "Answer → Reasoning → Trade-off",
-      "model_excerpt": "I added a B-tree index on the lookup column — it works by keeping sorted keys in a balanced tree so the query planner can do O(log n) lookups instead of a full scan. I chose it over a hash index because we also needed range queries, which hash indexes can't serve. The trade-off is slightly slower writes since every insert has to maintain the tree balance."
-    }
-  ],
-  "path_to_next_tier": "One answer at the depth of the model answer above — explaining a system's internals, not just its interface — would likely be enough evidence to move this from Borderline to Hire.",
-  "behavioral_insights": {
-    "star_adherence_score": 65,
-    "confidence_level": "Medium",
-    "confidence_rationale": "Based on 7 answers with consistent communication quality, but only 2 questions probed technical internals directly, which limits how confidently the depth gap can be generalized.",
-    "red_flags": ["Technical depth insufficient for senior-level role"]
-  },
-  "actionable_feedback": {
-    "strengths": ["Concise, answer-first communication style", "Good self-awareness about limitations"],
-    "growth_areas": ["Deepen systems internals knowledge", "Practice explaining database internals and distributed systems concepts"],
-    "top_priority_fix": "Study the internals of at least 2 core systems you use daily — indexing, caching, or message queues."
-  }
-}
-
-[END FEW-SHOT EXAMPLES]
+[END FEW-SHOT EXAMPLES — Strong Hire and No Hire anchor the extremes; use SIGNAL_ANCHORS above to calibrate everything in between, including Borderline cases.]
 `.trim();
 
 export interface DebriefResult {
@@ -609,10 +518,19 @@ export async function generateDebrief(
   session: SessionContext,
   qas: QAPair[]
 ): Promise<DebriefResult> {
+  // Cap each answer the same way jd_content is already capped below — an
+  // uncapped transcript (e.g. a long round with rambling answers) can push
+  // the system prompt past Groq's context/rate limits, especially stacked
+  // on top of FEW_SHOT_EXAMPLES and SIGNAL_ANCHORS below. 4000 chars is
+  // generous for a single spoken answer (roughly 700-800 words) while
+  // bounding the worst case.
+  const MAX_ANSWER_CHARS = 4000;
   const qaText = qas
     .map(
       (qa) =>
-        `Q${qa.question_number}: ${qa.question}\nAnswer: ${qa.answer ?? "(no answer provided)"}`
+        `Q${qa.question_number}: ${qa.question}\nAnswer: ${
+          qa.answer ? qa.answer.slice(0, MAX_ANSWER_CHARS) : "(no answer provided)"
+        }`
     )
     .join("\n\n");
 
@@ -718,24 +636,63 @@ Return this exact structure:
 
 Include all 8 signals in skill_analysis in this order: TECHNICAL_DEPTH, PROBLEM_SOLVING, STAR_ALIGNMENT, COMMUNICATION_SNR, RESULT_ORIENTATION, OWNERSHIP_ETHICS, ADAPTABILITY_GROWTH, EDGE_CASE_MASTERY.`;
 
-  const completion = await getClient().chat.completions.create({
-    model: MODEL,
-    // gpt-oss-120b supports up to 32K output tokens on Groq. The schema grew
-    // substantially after this was first set to 7000 (question_walkthrough,
-    // priority_risks, model_answers, path_to_next_tier all added later) —
-    // an 8-question round's full report can plausibly exceed that, silently
-    // truncating the JSON with no error until JSON.parse throws below.
-    max_tokens: 12000,
-    // See generateNextQuestion — gpt-oss-120b's default 'medium' reasoning
-    // effort burns hidden reasoning tokens out of the same max_tokens budget.
-    // The debrief output is long and structured; keep the budget for visible
-    // JSON, not hidden reasoning.
-    reasoning_effort: "low",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: "Generate the structured debrief report." },
-    ],
-  });
+  const completion = await (async () => {
+    try {
+      return await getClient().chat.completions.create({
+        model: MODEL,
+        // gpt-oss-120b supports up to 32K output tokens on Groq. The schema grew
+        // substantially after this was first set to 7000 (question_walkthrough,
+        // priority_risks, model_answers, path_to_next_tier all added later) —
+        // an 8-question round's full report can plausibly exceed that, silently
+        // truncating the JSON with no error until JSON.parse throws below.
+        max_tokens: 12000,
+        // See generateNextQuestion — gpt-oss-120b's default 'medium' reasoning
+        // effort burns hidden reasoning tokens out of the same max_tokens budget.
+        // The debrief output is long and structured; keep the budget for visible
+        // JSON, not hidden reasoning.
+        reasoning_effort: "low",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: "Generate the structured debrief report." },
+        ],
+      });
+    } catch (apiErr) {
+      // Previously an uncaught Groq.APIError (rate limit, context-length
+      // rejection, etc.) propagated straight to the route's generic catch,
+      // which deliberately hides the real cause from the client — so a
+      // deterministic, content-triggered failure (e.g. a long/verbose
+      // transcript pushing the request over a token or rate limit) looked
+      // identical to a one-off glitch and "Try again" always failed the same
+      // way with zero diagnosis. Log the real status/body here so it's
+      // visible server-side, and surface a message the client is actually
+      // allowed to show that at least tells the user whether retrying makes
+      // sense.
+      // Confirmed in production: Groq returns HTTP 413 (not the 429 that
+      // Groq.RateLimitError maps to) when a single request's token need
+      // exceeds the account's tokens-per-minute (TPM) budget outright — e.g.
+      // "Limit 8000, Requested 9346". That's a capacity ceiling on the
+      // account's current Groq tier, not a transient throttle: waiting and
+      // retrying the same transcript will fail identically every time, so
+      // this must not get the generic "try again in a moment" message.
+      if (apiErr instanceof Groq.APIError && apiErr.status === 413) {
+        console.error("[generateDebrief] Groq TPM capacity exceeded:", apiErr.status, apiErr.error);
+        throw new Error("This interview's transcript is too large for the AI service's current capacity — please contact support.");
+      }
+      if (apiErr instanceof Groq.RateLimitError) {
+        console.error("[generateDebrief] Groq rate limit:", apiErr.status, apiErr.error);
+        throw new Error("The AI service is rate-limited right now — please wait a minute and try again.");
+      }
+      if (apiErr instanceof Groq.BadRequestError) {
+        console.error("[generateDebrief] Groq rejected the request:", apiErr.status, apiErr.error);
+        throw new Error("Your interview transcript was too long for the report to process — please contact support.");
+      }
+      if (apiErr instanceof Groq.APIError) {
+        console.error("[generateDebrief] Groq API error:", apiErr.status, apiErr.error);
+        throw new Error("The AI service returned an unexpected error — please try again in a moment.");
+      }
+      throw apiErr;
+    }
+  })();
 
   const choice = completion.choices[0];
   if (choice.finish_reason === "length") {

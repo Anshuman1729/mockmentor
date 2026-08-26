@@ -212,6 +212,10 @@ export async function POST(req: NextRequest) {
       "The report generation ran out of room and was cut off — please try again.",
       "The report came back malformed — please try again.",
       "The report came back incomplete — please try again.",
+      "This interview's transcript is too large for the AI service's current capacity — please contact support.",
+      "The AI service is rate-limited right now — please wait a minute and try again.",
+      "Your interview transcript was too long for the report to process — please contact support.",
+      "The AI service returned an unexpected error — please try again in a moment.",
     ]);
     const message =
       err instanceof Error && KNOWN_SAFE_MESSAGES.has(err.message)
