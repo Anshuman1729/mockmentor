@@ -5,6 +5,35 @@
 
 ---
 
+## 🟡 Built, staging/preview-only (`claude/prep-signals-pmf-path-wdngr6`) — Post-Interview Feedback
+
+Purpose: this whole codebase's product decisions (redesigns, tone passes, conversion-flow changes)
+have so far been driven by persona-review agents and self-review, not real users — see the PMF
+discussion earlier this session. This form is the first real-user feedback instrument. Deliberately
+**not merged to `main`** — deployed only as a Vercel preview off this branch, per explicit direction,
+until there's a decision to actually ship it.
+
+| Item | Notes |
+|---|---|
+| `lib/round-types.ts` | Extracted `QUESTIONS_BY_ROUND`/`normalizeRoundType`/`seedRoundType`/`getTotalQuestions` out of `app/api/interview/question/route.ts` so the feedback config can't define its own, drifting copy of the round-type list. |
+| `lib/feedback-config.ts` | Deterministic (no LLM) question set: `UNIVERSAL_QUESTIONS` (realism, voice quality, would-use-again, open text) asked on every round; round-specific quality markers (`TECHNICAL_MARKERS` for technical_screen/technical_deep_dive, `CONVERSATIONAL_MARKERS` for behavioural/hr_screen, plus system_design/final/case_study-specific ones); one extra question appended when `questionCount` hits the longest round length (8, i.e. technical_deep_dive/final) about coherence across a long round. |
+| `post_interview_feedback` table (`db/schema.sql`) | One row per (session_id, question_id), `answer` JSONB, upsertable. |
+| `GET/POST /api/sessions/[sessionId]/feedback` | GET returns the applicable question set + any saved answers (for resuming); POST validates each answer against the same `getFeedbackQuestions()` server-side (rating 1-5 int, single_select must match its options, text capped at 2000 chars) before upserting. Same `assertSessionOwner` auth as the rest of the session API. |
+| `components/PostInterviewFeedback.tsx` | New numbered section ("10 — Help Us Improve") rendered at the end of the debrief report. Computes its question set client-side via the same deterministic function the API validates against — no fetch needed to show the form, so it degrades gracefully with no DB (e.g. `/dev/debrief`). Only the best-effort "resume my answers" hydration and the final submit touch the network. |
+| `components/SectionHeading.tsx` | `SectionHeading` extracted out of `DebriefReport.tsx` into its own file so `PostInterviewFeedback.tsx` could import it without a circular import between the two components. |
+
+**Still needed before this can safely go live even on staging — infra, not code, so it wasn't done here:**
+- The Vercel Preview environment currently shares `DATABASE_URL` with Production unless configured
+  otherwise. Before pushing real traffic at this preview URL, set a **separate** `DATABASE_URL` for
+  the Preview environment in Vercel project settings — ideally a Neon branch database (Neon's
+  Vercel integration can auto-provision one per branch) — so test feedback responses (and anything
+  else written during preview testing) never land in the production `sessions`/`qa_pairs`/etc. tables.
+- Run `db/schema.sql`'s new `post_interview_feedback` table against whichever database the Preview
+  environment ends up pointing at (it's `CREATE TABLE IF NOT EXISTS`, safe to run anywhere including
+  prod, but only needs to exist wherever this branch is actually deployed).
+
+---
+
 ## ✅ Done (Overnight session — `feat/phase2-2.5`, debrief/UI redesign)
 
 Worked autonomously per user direction from the end of the previous session's brainstorm

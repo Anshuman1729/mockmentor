@@ -6,6 +6,8 @@ import { clsx } from "clsx";
 import { CANONICAL_FRAMEWORKS, type CanonicalFramework } from "@/lib/rubric-researched";
 import { SIGNAL_META, computeSignalTrends } from "@/lib/signals";
 import { DrillPractice } from "@/components/DrillPractice";
+import { SectionHeading } from "@/components/SectionHeading";
+import { PostInterviewFeedback } from "@/components/PostInterviewFeedback";
 
 const FRAMEWORKS_BY_NAME = new Map<string, CanonicalFramework>(
   Object.values(CANONICAL_FRAMEWORKS).map((f) => [f.name, f])
@@ -354,18 +356,6 @@ const confidenceStyle: Record<string, string> = {
 
 // Section eyebrow — numbered, editorial. Gives the report a sense of
 // authored structure rather than a dumped grid of cards.
-function SectionHeading({ n, title, sub }: { n: string; title: string; sub?: string }) {
-  return (
-    <div className="flex items-start gap-4">
-      <span className="font-mono text-xs text-gray-300 pt-1 shrink-0" aria-hidden="true">{n}</span>
-      <div className="space-y-1">
-        <h2 className="text-lg font-bold text-gray-950 tracking-tight">{title}</h2>
-        {sub && <p className="text-sm text-gray-500 leading-relaxed max-w-xl">{sub}</p>}
-      </div>
-    </div>
-  );
-}
-
 // ---- Main Component ----
 
 export default function DebriefReport({ sessionId }: { sessionId: string }) {
@@ -941,6 +931,16 @@ export function DebriefReportView({
           </div>
         )}
       </div>
+
+      {/* ═══ 10 — Post-interview feedback. Preview/staging-only (see
+          BACKLOG.md) — not intended to reach production as-is. ═══ */}
+      {sessionId && (
+        <PostInterviewFeedback
+          sessionId={sessionId}
+          roundType={session.round_type}
+          questionCount={qas.length}
+        />
+      )}
 
       <div className="pt-2">
         <Link href="/" className="text-sm text-gray-400 hover:text-gray-700 transition-colors">

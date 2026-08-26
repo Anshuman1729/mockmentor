@@ -84,6 +84,21 @@ CREATE TABLE IF NOT EXISTS calibration_loops (
   actual_outcome    TEXT
 );
 
+-- ─── post_interview_feedback ─────────────────────────────────────────────────
+-- Preview/staging-only feature (see BACKLOG.md) — the post-interview feedback
+-- form. One row per answered question; question_id refers to
+-- lib/feedback-config.ts (round-type + length driven), not a DB table, since
+-- the question set is versioned in code, not data.
+CREATE TABLE IF NOT EXISTS post_interview_feedback (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id  UUID        NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  question_id TEXT        NOT NULL,
+  answer      JSONB       NOT NULL,  -- number (rating) | string (text/single_select)
+  created_at  TIMESTAMP   NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMP   NOT NULL DEFAULT NOW(),
+  UNIQUE (session_id, question_id)
+);
+
 -- ─── users (to add with Clerk integration — Week 1) ──────────────────────────
 -- After adding this table:
 --   1. sessions.user_email → sessions.user_id UUID FK → users.id
