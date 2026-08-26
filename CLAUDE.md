@@ -136,8 +136,8 @@ what to do differently." Reworked within the existing architecture; see git log 
 | Frameworks consolidated 8→3 canonical (`CANONICAL_FRAMEWORKS` in `lib/rubric-researched.ts`) | ✅ Done |
 | `SIGNAL_META.bars` rewritten from generic tier words ("Proficient") to specific behavioral descriptions | ✅ Done — "false precision" fix |
 | Signal Analysis demoted to collapsed (`<details>`) supporting evidence, no longer the primary read | ✅ Done |
-| Retry/drill loop (rewrite an answer, get rescored) | ⬛ Deferred — new interaction model, not a redesign, needs its own scoping |
-| Cross-session trend tracking (same weakness across interviews) | ⬛ Deferred — needs new cross-session queries + UI, needs its own scoping |
+| Retry/drill loop (rewrite an answer, get rescored) | 🟡 Built — `POST /api/interview/drill` + `scoreDrillAttempt()` in `lib/groq.ts`, ephemeral (no DB write) by design. Untested against a live `GROQ_API_KEY` — needs a smoke test before considering it verified. |
+| Cross-session trend tracking (same weakness across interviews) | 🟡 Built — `GET /api/sessions/[sessionId]` now returns `history` (zero schema changes), rendered as "Your Recurring Pattern" in `DebriefReport.tsx`. Untested against real multi-session data — needs a smoke test with an actual repeat user. |
 
 ### Intelligence DB (`feat/intelligence-db-fatal-flag`)
 | Item | Status |
