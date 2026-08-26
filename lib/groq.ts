@@ -609,10 +609,19 @@ export async function generateDebrief(
   session: SessionContext,
   qas: QAPair[]
 ): Promise<DebriefResult> {
+  // Cap each answer the same way jd_content is already capped below — an
+  // uncapped transcript (e.g. a long round with rambling answers) can push
+  // the system prompt past Groq's context/rate limits, especially stacked
+  // on top of FEW_SHOT_EXAMPLES and SIGNAL_ANCHORS below. 4000 chars is
+  // generous for a single spoken answer (roughly 700-800 words) while
+  // bounding the worst case.
+  const MAX_ANSWER_CHARS = 4000;
   const qaText = qas
     .map(
       (qa) =>
-        `Q${qa.question_number}: ${qa.question}\nAnswer: ${qa.answer ?? "(no answer provided)"}`
+        `Q${qa.question_number}: ${qa.question}\nAnswer: ${
+          qa.answer ? qa.answer.slice(0, MAX_ANSWER_CHARS) : "(no answer provided)"
+        }`
     )
     .join("\n\n");
 
@@ -718,24 +727,52 @@ Return this exact structure:
 
 Include all 8 signals in skill_analysis in this order: TECHNICAL_DEPTH, PROBLEM_SOLVING, STAR_ALIGNMENT, COMMUNICATION_SNR, RESULT_ORIENTATION, OWNERSHIP_ETHICS, ADAPTABILITY_GROWTH, EDGE_CASE_MASTERY.`;
 
-  const completion = await getClient().chat.completions.create({
-    model: MODEL,
-    // gpt-oss-120b supports up to 32K output tokens on Groq. The schema grew
-    // substantially after this was first set to 7000 (question_walkthrough,
-    // priority_risks, model_answers, path_to_next_tier all added later) —
-    // an 8-question round's full report can plausibly exceed that, silently
-    // truncating the JSON with no error until JSON.parse throws below.
-    max_tokens: 12000,
-    // See generateNextQuestion — gpt-oss-120b's default 'medium' reasoning
-    // effort burns hidden reasoning tokens out of the same max_tokens budget.
-    // The debrief output is long and structured; keep the budget for visible
-    // JSON, not hidden reasoning.
-    reasoning_effort: "low",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: "Generate the structured debrief report." },
-    ],
-  });
+  const completion = await (async () => {
+    try {
+      return await getClient().chat.completions.create({
+        model: MODEL,
+        // gpt-oss-120b supports up to 32K output tokens on Groq. The schema grew
+        // substantially after this was first set to 7000 (question_walkthrough,
+        // priority_risks, model_answers, path_to_next_tier all added later) —
+        // an 8-question round's full report can plausibly exceed that, silently
+        // truncating the JSON with no error until JSON.parse throws below.
+        max_tokens: 12000,
+        // See generateNextQuestion — gpt-oss-120b's default 'medium' reasoning
+        // effort burns hidden reasoning tokens out of the same max_tokens budget.
+        // The debrief output is long and structured; keep the budget for visible
+        // JSON, not hidden reasoning.
+        reasoning_effort: "low",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: "Generate the structured debrief report." },
+        ],
+      });
+    } catch (apiErr) {
+      // Previously an uncaught Groq.APIError (rate limit, context-length
+      // rejection, etc.) propagated straight to the route's generic catch,
+      // which deliberately hides the real cause from the client — so a
+      // deterministic, content-triggered failure (e.g. a long/verbose
+      // transcript pushing the request over a token or rate limit) looked
+      // identical to a one-off glitch and "Try again" always failed the same
+      // way with zero diagnosis. Log the real status/body here so it's
+      // visible server-side, and surface a message the client is actually
+      // allowed to show that at least tells the user whether retrying makes
+      // sense.
+      if (apiErr instanceof Groq.RateLimitError) {
+        console.error("[generateDebrief] Groq rate limit:", apiErr.status, apiErr.error);
+        throw new Error("The AI service is rate-limited right now — please wait a minute and try again.");
+      }
+      if (apiErr instanceof Groq.BadRequestError) {
+        console.error("[generateDebrief] Groq rejected the request:", apiErr.status, apiErr.error);
+        throw new Error("Your interview transcript was too long for the report to process — please contact support.");
+      }
+      if (apiErr instanceof Groq.APIError) {
+        console.error("[generateDebrief] Groq API error:", apiErr.status, apiErr.error);
+        throw new Error("The AI service returned an unexpected error — please try again in a moment.");
+      }
+      throw apiErr;
+    }
+  })();
 
   const choice = completion.choices[0];
   if (choice.finish_reason === "length") {
