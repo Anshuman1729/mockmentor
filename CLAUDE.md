@@ -120,6 +120,25 @@ npm run test:coverage        # vitest with coverage
 | `/dev/debrief` mock preview (+ `?scenario=strong` / `?scenario=nohire`) for DB-free visual QA | ✅ Done |
 | Longest-monologue / candidate-question-rate surfaced in metrics cards (Backlog #10/#11) | ✅ Done — plain ungraded stats, no invented benchmark |
 
+### Debrief "Coaching Cockpit" Rework (same branch, following direct user product feedback)
+Direct critique after the redesign above landed: the report was optimized for producing an
+impressive artifact, not for closing the gap between "I messed this up" and "here's exactly
+what to do differently." Reworked within the existing architecture; see git log on
+`feat/phase2-2.5` for the full rationale per change.
+| Item | Status |
+|---|---|
+| `priority_risks` — 2-3 consolidated root causes replacing "8 separate scores" as the primary read | ✅ Done — every signal rated ≤3 must be explained by one, enforced in the prompt |
+| `ModelAnswer` enriched with `your_quote` + `why_it_hurt` (Observed → Problem → Better) | ✅ Done — up to 3 entries, one per priority_risk |
+| `path_to_next_tier` — the counterfactual ("what would move the verdict") | ✅ Done |
+| `confidence_rationale` — ties Confidence to something concrete instead of bare metadata | ✅ Done |
+| `overall_impression` in the interviewer's first-person voice, elevated as the verdict banner's centerpiece quote | ✅ Done |
+| SNR/verbosity contradiction fix: "Signal-to-Noise" renamed "Content Density", copy explicitly separates density from structure | ✅ Done |
+| Frameworks consolidated 8→3 canonical (`CANONICAL_FRAMEWORKS` in `lib/rubric-researched.ts`) | ✅ Done |
+| `SIGNAL_META.bars` rewritten from generic tier words ("Proficient") to specific behavioral descriptions | ✅ Done — "false precision" fix |
+| Signal Analysis demoted to collapsed (`<details>`) supporting evidence, no longer the primary read | ✅ Done |
+| Retry/drill loop (rewrite an answer, get rescored) | ⬛ Deferred — new interaction model, not a redesign, needs its own scoping |
+| Cross-session trend tracking (same weakness across interviews) | ⬛ Deferred — needs new cross-session queries + UI, needs its own scoping |
+
 ### Intelligence DB (`feat/intelligence-db-fatal-flag`)
 | Item | Status |
 |---|---|
