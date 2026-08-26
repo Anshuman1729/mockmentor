@@ -754,3 +754,68 @@ Include all 8 signals in skill_analysis in this order: TECHNICAL_DEPTH, PROBLEM_
 
   return { report, usage };
 }
+
+// ─── Drill / Retry Loop ──────────────────────────────────────────────────────
+// Direct product feedback: the report shouldn't stop at "here's a better
+// answer" — it should let the candidate actually try the rewrite and see if
+// it worked ("Interview -> Diagnosis -> Rewrite -> Drill -> Retry -> Trend").
+// This is a deliberately tiny, single-signal rescore — NOT a full debrief —
+// so a practice attempt gets fast, cheap, focused feedback instead of
+// waiting on a multi-thousand-token structured report.
+
+export interface DrillScoreResult {
+  rating: number;    // 1-5, same BARS scale as skill_analysis
+  reasoning: string;  // one sentence: what changed vs. the original attempt, and what (if anything) is still missing
+}
+
+export interface DrillAttemptInput {
+  question: string;
+  parameter_id: string;      // which of the 8 signals to score against
+  original_rating: number;   // the rating this answer got in the real interview
+  attempt_answer: string;    // the candidate's new, rewritten answer
+  role: string;
+  company: string;
+}
+
+export async function scoreDrillAttempt(
+  input: DrillAttemptInput
+): Promise<{ result: DrillScoreResult; usage: { input_tokens: number; output_tokens: number; model: string } }> {
+  const systemPrompt = `You are scoring a SINGLE practice answer against ONE interview signal, using the same BARS rubric a full interview debrief uses. This is a practice drill — the candidate rewrote their answer and wants to know, honestly, whether it actually improved.
+
+Role: ${input.role} at ${input.company}
+Question: ${input.question}
+Signal being scored: ${input.parameter_id}
+
+--- SCORING RUBRIC (score only the signal above, using its anchor) ---
+${SIGNAL_ANCHORS}
+
+The candidate's ORIGINAL answer to this question scored ${input.original_rating}/5 on ${input.parameter_id}. Here is their NEW attempt:
+"${input.attempt_answer}"
+
+Score the new attempt 1-5 on ${input.parameter_id} using the anchors above. Be honest — if it didn't actually improve, or overcorrected into a new problem, say so. Do not inflate the score just because they made an effort.
+
+Return raw JSON only, no markdown:
+{ "rating": 1-5, "reasoning": "One sentence: what's different from the original attempt, and what (if anything) is still missing." }`;
+
+  const completion = await getClient().chat.completions.create({
+    model: MODEL,
+    max_tokens: 400,
+    reasoning_effort: "low",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: "Score this practice attempt." },
+    ],
+  });
+
+  const raw = completion.choices[0].message.content?.trim() ?? "";
+  const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+  const result = JSON.parse(jsonStr) as DrillScoreResult;
+
+  const usage = {
+    input_tokens: completion.usage?.prompt_tokens ?? 0,
+    output_tokens: completion.usage?.completion_tokens ?? 0,
+    model: MODEL,
+  };
+
+  return { result, usage };
+}

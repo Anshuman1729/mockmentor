@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { clsx } from "clsx";
 import { CANONICAL_FRAMEWORKS, type CanonicalFramework } from "@/lib/rubric-researched";
+import { DrillPractice } from "@/components/DrillPractice";
 
 const FRAMEWORKS_BY_NAME = new Map<string, CanonicalFramework>(
   Object.values(CANONICAL_FRAMEWORKS).map((f) => [f.name, f])
@@ -83,6 +84,20 @@ interface LegacyDebrief {
 export type Debrief = NewDebrief | LegacyDebrief;
 export type { NewDebrief };
 
+interface HistorySkill {
+  parameter_id: string;
+  rating: number;
+}
+
+export interface HistoryEntry {
+  session_id: string;
+  date: string; // ISO timestamp
+  role: string;
+  company: string;
+  round_type: string;
+  skill_analysis: HistorySkill[];
+}
+
 interface SessionData {
   session: {
     role: string;
@@ -92,6 +107,8 @@ interface SessionData {
     user_email: string;
   };
   debrief: Debrief | null;
+  history?: HistoryEntry[];
+  qas?: { question_number: number; question: string }[];
 }
 
 // ---- Helpers ----
@@ -406,7 +423,15 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
     return <p className="text-gray-500 text-center">Debrief not available yet.</p>;
   }
 
-  return <DebriefReportView session={data.session} debrief={data.debrief} />;
+  return (
+    <DebriefReportView
+      session={data.session}
+      debrief={data.debrief}
+      sessionId={sessionId}
+      history={data.history ?? []}
+      qas={data.qas ?? []}
+    />
+  );
 }
 
 // Presentational body, split out from the data-fetching wrapper above so it
@@ -414,9 +439,15 @@ export default function DebriefReport({ sessionId }: { sessionId: string }) {
 export function DebriefReportView({
   session,
   debrief,
+  sessionId,
+  history = [],
+  qas = [],
 }: {
   session: SessionData["session"];
   debrief: Debrief;
+  sessionId?: string;
+  history?: HistoryEntry[];
+  qas?: { question_number: number; question: string }[];
 }) {
   // ---- Legacy fallback ----
   if (!isNewDebrief(debrief)) {
@@ -473,6 +504,7 @@ export function DebriefReportView({
   const walkthrough = d.question_walkthrough ?? [];
   const priorityRisks = d.priority_risks ?? [];
   const modelAnswers = d.model_answers ?? [];
+  const questionByNumber = new Map(qas.map((qa) => [qa.question_number, qa.question]));
 
   // "What Helped" — the positive half of what used to be the flat "Key
   // Moments" section, still verbatim-evidence-backed per explicit feedback
@@ -485,6 +517,44 @@ export function DebriefReportView({
     .sort((a, b) => b.rating - a.rating)
     .filter((s) => s.rating >= 4)
     .slice(0, 3);
+
+  // Cross-interview trend: for each signal, look at how it scored in past
+  // sessions (history, oldest first) and append today's rating. Skips a
+  // signal entirely if there's no past data for it, or if it's never once
+  // been weak (nothing to track). "Recurring" = weak in today's session AND
+  // the immediately preceding session(s) — not necessarily every session
+  // ever, which would be too strict to be useful after just a few weak
+  // sessions in a row.
+  const signalTrends = d.skill_analysis
+    .map((skill) => {
+      const pastPoints = history
+        .filter((h) => h.skill_analysis.some((s) => s.parameter_id === skill.parameter_id))
+        .map((h) => ({
+          label: new Date(h.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+          rating: h.skill_analysis.find((s) => s.parameter_id === skill.parameter_id)!.rating,
+          isCurrent: false,
+        }));
+      if (pastPoints.length === 0) return null;
+      if (skill.rating > 3 && pastPoints.every((p) => p.rating > 3)) return null; // never a problem — nothing to surface
+      const points = [...pastPoints, { label: "Today", rating: skill.rating, isCurrent: true }];
+      let streak = 0;
+      for (let i = points.length - 1; i >= 0 && points[i].rating <= 3; i--) streak++;
+      // "Improving" = actually better than the most recent prior session —
+      // real week-over-week progress, regardless of absolute level.
+      // "Recurring" = weak for 2+ sessions running AND not improving — a
+      // signal that's stuck or declining, not one that's on its way out of
+      // the weak zone. The two are mutually exclusive by design: getting
+      // better shouldn't read as "still a pattern."
+      const improving = skill.rating > pastPoints[pastPoints.length - 1].rating;
+      return {
+        parameter_id: skill.parameter_id,
+        points,
+        recurring: streak >= 2 && !improving,
+        streak,
+        improving,
+      };
+    })
+    .filter((t): t is NonNullable<typeof t> => t !== null);
 
   return (
     <div className="max-w-2xl mx-auto pb-16 space-y-12">
@@ -537,6 +607,7 @@ export function DebriefReportView({
           ["risks", "What Helped / Hurt"],
           ["moments", "Moments That Cost You Signal"],
           ["signal-analysis", "Signal Analysis"],
+          ["pattern", "Recurring Pattern"],
           ["metrics", "Conversational Metrics"],
           ["action-plan", "Action Plan"],
         ].map(([href, label]) => (
@@ -676,6 +747,16 @@ export function DebriefReportView({
                     </ol>
                   )}
                 </div>
+                {sessionId && questionByNumber.get(ma.question_number) && (
+                  <DrillPractice
+                    sessionId={sessionId}
+                    questionNumber={ma.question_number}
+                    question={questionByNumber.get(ma.question_number)!}
+                    parameterId={ma.parameter_id}
+                    signalName={SIGNAL_META[ma.parameter_id]?.name ?? ma.parameter_id}
+                    originalRating={d.skill_analysis.find((s) => s.parameter_id === ma.parameter_id)?.rating ?? 0}
+                  />
+                )}
               </div>
             ))}
           </div>
@@ -739,10 +820,57 @@ export function DebriefReportView({
         </div>
       </div>
 
-      {/* ═══ 05 — Conversational Metrics ═══ */}
+      {/* ═══ 05 — Your Recurring Pattern — cross-interview trend. Direct
+          feedback: "are these weaknesses recurring across interviews?" —
+          this is the difference between a report and a training system. ═══ */}
+      {signalTrends.length > 0 && (
+        <div id="pattern" className="space-y-6 scroll-mt-20">
+          <SectionHeading
+            n="05"
+            title="Your Recurring Pattern"
+            sub="How these same signals scored in your past sessions, not just this one."
+          />
+          <div className="space-y-3">
+            {signalTrends.map((t) => (
+              <div key={t.parameter_id} className="rounded-lg border border-gray-100 p-4 space-y-2.5">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <p className="text-sm font-semibold text-gray-900">{SIGNAL_META[t.parameter_id]?.name ?? t.parameter_id}</p>
+                  {t.recurring ? (
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-600">
+                      {t.streak}-session pattern
+                    </span>
+                  ) : t.improving ? (
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+                      Improving
+                    </span>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {t.points.map((p, i) => (
+                    <span key={i} className="flex items-center gap-1.5">
+                      <span className={clsx(
+                        "text-xs font-mono px-2 py-1 rounded-md whitespace-nowrap",
+                        p.isCurrent ? "bg-gray-950 text-white" :
+                        p.rating <= 2 ? "bg-red-50 text-red-600" :
+                        p.rating === 3 ? "bg-amber-50 text-amber-700" :
+                        "bg-emerald-50 text-emerald-700"
+                      )}>
+                        {p.label}: {p.rating}/5
+                      </span>
+                      {i < t.points.length - 1 && <span className="text-gray-300" aria-hidden="true">→</span>}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ 06 — Conversational Metrics ═══ */}
       <div id="metrics" className="space-y-6 scroll-mt-20">
         <SectionHeading
-          n="05"
+          n="06"
           title="Conversational Metrics"
           sub="How the interview flowed, independent of content — measured against interview-research benchmarks."
         />
@@ -771,9 +899,9 @@ export function DebriefReportView({
         )}
       </div>
 
-      {/* ═══ 06 — Behavioral Insights ═══ */}
+      {/* ═══ 07 — Behavioral Insights ═══ */}
       <div className="space-y-6">
-        <SectionHeading n="06" title="Behavioral Insights" />
+        <SectionHeading n="07" title="Behavioral Insights" />
         <div className="flex flex-wrap items-stretch gap-3">
           <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 max-w-xs">
             <h3 className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase mb-2">Story Structure Score</h3>
@@ -817,22 +945,22 @@ export function DebriefReportView({
         )}
       </div>
 
-      {/* ═══ 07 — What Would Move The Verdict — the counterfactual. Direct
+      {/* ═══ 08 — What Would Move The Verdict — the counterfactual. Direct
           feedback: "candidates don't care whether they got a 2/5 in Edge
           Case Awareness, they care what impression they left, and what
           would have changed it." ═══ */}
       {d.path_to_next_tier && (
         <div className="space-y-4">
-          <SectionHeading n="07" title="What Would Move The Verdict" sub="The one thing that, if demonstrated, would most likely change the outcome." />
+          <SectionHeading n="08" title="What Would Move The Verdict" sub="The one thing that, if demonstrated, would most likely change the outcome." />
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-5">
             <p className="text-sm text-gray-800 leading-relaxed">{d.path_to_next_tier}</p>
           </div>
         </div>
       )}
 
-      {/* ═══ 08 — Action Plan ═══ */}
+      {/* ═══ 09 — Action Plan ═══ */}
       <div id="action-plan" className="space-y-6 scroll-mt-20">
-        <SectionHeading n="08" title="Action Plan" sub="What to fix before your next round." />
+        <SectionHeading n="09" title="Action Plan" sub="What to fix before your next round." />
         {d.actionable_feedback?.growth_areas?.length > 0 && (
           <div className="space-y-3">
             <h3 className="text-[10px] font-semibold tracking-wider text-amber-600 uppercase">Growth Areas</h3>

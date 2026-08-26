@@ -1,4 +1,5 @@
-import { DebriefReportView, type NewDebrief } from "@/components/DebriefReport";
+import { DebriefReportView, type NewDebrief, type HistoryEntry } from "@/components/DebriefReport";
+import { DevDrillMock } from "./DevDrillMock";
 
 // Dev-only, DB-free preview of the new debrief report design — realistic
 // mock data matching the current DebriefReport schema (lib/groq.ts), so the
@@ -12,6 +13,48 @@ const MOCK_SESSION = {
   yoe: 5,
   user_email: "test@prepsignals.dev",
 };
+
+// Real question text for each question_number the mock debriefs reference —
+// DrillPractice needs this to show "your turn, answer this again."
+const MOCK_QAS = [
+  { question_number: 1, question: "Tell me about yourself and your experience with backend systems." },
+  { question_number: 2, question: "Walk me through the event-driven architecture you built — what did you use and why?" },
+  { question_number: 3, question: "You get paged at 2am for a service returning intermittent 500s. Walk me through your diagnosis." },
+  { question_number: 4, question: "Tell me about a time you found and fixed a bug that wasn't assigned to you." },
+  { question_number: 5, question: "How does your queue processor handle failures?" },
+];
+
+// Cross-interview trend fixture (Backlog: "retry/drill loop + trend
+// tracking") — two past sessions where Technical Depth stayed weak and
+// Communication Clarity improved, so both the "N-session pattern" and
+// "Improving" badges can be visually verified against the borderline
+// scenario's today rating (TECHNICAL_DEPTH: 2, COMMUNICATION_SNR: 2).
+const MOCK_HISTORY: HistoryEntry[] = [
+  {
+    session_id: "mock-session-a",
+    date: "2026-08-10T10:00:00Z",
+    role: "Senior Backend Engineer",
+    company: "Datadog",
+    round_type: "Technical Screen",
+    skill_analysis: [
+      { parameter_id: "TECHNICAL_DEPTH", rating: 2 },
+      { parameter_id: "COMMUNICATION_SNR", rating: 1 },
+      { parameter_id: "EDGE_CASE_MASTERY", rating: 2 },
+    ],
+  },
+  {
+    session_id: "mock-session-b",
+    date: "2026-08-18T10:00:00Z",
+    role: "Senior Backend Engineer",
+    company: "Notion",
+    round_type: "Technical Deep Dive",
+    skill_analysis: [
+      { parameter_id: "TECHNICAL_DEPTH", rating: 2 },
+      { parameter_id: "COMMUNICATION_SNR", rating: 1 },
+      { parameter_id: "EDGE_CASE_MASTERY", rating: 3 },
+    ],
+  },
+];
 
 const MOCK_DEBRIEF: NewDebrief = {
   summary: {
@@ -400,11 +443,18 @@ export default async function DebriefPreview({
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <DevDrillMock />
       <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-center text-xs text-amber-700 font-medium">
-        dev preview — /dev/debrief — mock data, no DB or LLM call — try ?scenario=strong or ?scenario=nohire
+        dev preview — /dev/debrief — mock data, no DB or LLM call — try ?scenario=strong or ?scenario=nohire — &quot;Try it yourself&quot; is mocked here, not calling the real API
       </div>
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10">
-        <DebriefReportView session={MOCK_SESSION} debrief={debrief} />
+        <DebriefReportView
+          session={MOCK_SESSION}
+          debrief={debrief}
+          sessionId="dev-preview-session"
+          qas={MOCK_QAS}
+          history={MOCK_HISTORY}
+        />
       </div>
     </div>
   );
