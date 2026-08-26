@@ -4,6 +4,7 @@ import { useEffect, useState, type ComponentProps, type ReactNode } from "react"
 import { SIGNAL_META, computeSignalTrends, type SkillRating } from "@/lib/signals";
 import { RecommendationBadge } from "@/components/SessionHistory";
 import SessionHistory from "@/components/SessionHistory";
+import { OverallTrendChart, SignalSparkline, HorizontalBarChart } from "@/components/ProgressCharts";
 
 interface AnalyticsSession {
   session_id: string;
@@ -47,6 +48,29 @@ function buildSignalAverages(sessions: AnalyticsSession[]) {
       return { parameter_id, average: avg(ratings), count: ratings.length, trend };
     })
     .sort((a, b) => a.average - b.average);
+}
+
+// One point per session, oldest first — the overall trend line's data.
+function buildOverallTrend(sessions: AnalyticsSession[]) {
+  return sessions.map((s) => ({
+    label: new Date(s.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    sub: `${s.company} · ${s.round_type}`,
+    value: avg(s.skill_analysis.map((sk) => sk.rating)),
+  }));
+}
+
+// Chronological rating series per signal (oldest first) — the shape a
+// sparkline draws. Distinct from buildSignalAverages: that one collapses to
+// a single number, this one keeps every point.
+function buildSignalSeries(sessions: AnalyticsSession[]): Map<string, number[]> {
+  const bySignal = new Map<string, number[]>();
+  for (const s of sessions) {
+    for (const skill of s.skill_analysis) {
+      if (!bySignal.has(skill.parameter_id)) bySignal.set(skill.parameter_id, []);
+      bySignal.get(skill.parameter_id)!.push(skill.rating);
+    }
+  }
+  return bySignal;
 }
 
 // Groups sessions by a key (round type / company stage) and averages the
@@ -173,6 +197,8 @@ export default function ProgressDashboard({
   const chronic = trends.filter((t) => t.recurring);
   const improving = trends.filter((t) => t.improving);
   const signalAverages = buildSignalAverages(sessions);
+  const signalSeries = buildSignalSeries(sessions);
+  const overallTrend = buildOverallTrend(sessions);
   const roundBreakdown = buildGroupBreakdown(sessions, "round_type");
   const stageBreakdown = buildGroupBreakdown(sessions, "company_stage");
 
@@ -195,6 +221,8 @@ export default function ProgressDashboard({
       </div>
 
       {sessions.length < 3 && <SparseState count={sessions.length} />}
+
+      {overallTrend.length >= 2 && <OverallTrendChart points={overallTrend} />}
 
       {(chronic.length > 0 || improving.length > 0) && (
         <div className="space-y-8">
@@ -250,52 +278,45 @@ export default function ProgressDashboard({
       {signalAverages.length > 0 && (
         <div className="space-y-3">
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">Your average score, signal by signal</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Averaged across all {sessions.length} completed interviews. The arrow compares your earlier sessions to your more recent ones.</p>
+            <h2 className="text-sm font-semibold text-gray-900">Your trajectory, signal by signal</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Every completed interview, oldest to most recent. The shape is the story — a flat line is a plateau, not just a number.</p>
           </div>
-          <div className="rounded-xl border border-gray-100 divide-y divide-gray-100">
-            {signalAverages.map((s) => {
+          <SignalCardGrid
+            items={signalAverages.map((s) => {
               const meta = SIGNAL_META[s.parameter_id];
-              return (
-                <div key={s.parameter_id} className="flex items-center gap-3 px-4 py-3">
-                  <span className="flex-1 text-sm text-gray-800">{meta?.name ?? s.parameter_id}</span>
-                  <span className="font-mono text-sm font-semibold text-gray-950 tabular-nums">{s.average.toFixed(1)}/5</span>
-                  <SignalArrow trend={s.trend as "up" | "down" | "flat"} />
-                </div>
-              );
+              const series = signalSeries.get(s.parameter_id) ?? [];
+              return {
+                key: s.parameter_id,
+                content: (
+                  <div className="h-full rounded-lg border border-gray-100 px-4 py-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-semibold text-gray-900">{meta?.name ?? s.parameter_id}</span>
+                      <span className="flex items-center gap-1.5 font-mono text-sm font-semibold text-gray-950 tabular-nums">
+                        {s.average.toFixed(1)}/5
+                        <SignalArrow trend={s.trend as "up" | "down" | "flat"} />
+                      </span>
+                    </div>
+                    <SignalSparkline values={series} />
+                  </div>
+                ),
+              };
             })}
-          </div>
+          />
         </div>
       )}
 
       {(roundBreakdown.length > 0 || stageBreakdown.length > 0) && (
         <div className="grid gap-6 sm:grid-cols-2">
           {roundBreakdown.length > 0 && (
-            <div className="space-y-2">
+            <div className="space-y-3 rounded-xl border border-gray-100 p-4">
               <h2 className="text-sm font-semibold text-gray-900">By round type</h2>
-              <div className="rounded-xl border border-gray-100 divide-y divide-gray-100">
-                {roundBreakdown.map((g) => (
-                  <div key={g.label} className="flex items-center gap-3 px-4 py-2.5">
-                    <span className="flex-1 text-xs text-gray-700">{g.label}</span>
-                    <span className="text-[10px] text-gray-400">{g.count} session{g.count !== 1 ? "s" : ""}</span>
-                    <span className="font-mono text-xs font-semibold text-gray-950 tabular-nums">{g.average.toFixed(1)}/5</span>
-                  </div>
-                ))}
-              </div>
+              <HorizontalBarChart bars={roundBreakdown.map((g) => ({ label: g.label, value: g.average, count: g.count }))} />
             </div>
           )}
           {stageBreakdown.length > 0 && (
-            <div className="space-y-2">
+            <div className="space-y-3 rounded-xl border border-gray-100 p-4">
               <h2 className="text-sm font-semibold text-gray-900">By company stage</h2>
-              <div className="rounded-xl border border-gray-100 divide-y divide-gray-100">
-                {stageBreakdown.map((g) => (
-                  <div key={g.label} className="flex items-center gap-3 px-4 py-2.5">
-                    <span className="flex-1 text-xs text-gray-700">{g.label}</span>
-                    <span className="text-[10px] text-gray-400">{g.count} session{g.count !== 1 ? "s" : ""}</span>
-                    <span className="font-mono text-xs font-semibold text-gray-950 tabular-nums">{g.average.toFixed(1)}/5</span>
-                  </div>
-                ))}
-              </div>
+              <HorizontalBarChart bars={stageBreakdown.map((g) => ({ label: g.label, value: g.average, count: g.count }))} />
             </div>
           )}
         </div>
