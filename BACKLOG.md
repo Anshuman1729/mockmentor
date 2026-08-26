@@ -216,6 +216,29 @@ Playwright and reporting back real UX friction — not just self-review.
 
 ---
 
+## 📋 Engagement Loop: Competence-Based Gamification (Blocked on Analytics)
+
+### Prerequisite: Product Analytics / Event Tracking
+- **Why**: Codebase has zero event-level analytics — checked `app/api/sessions/analytics/route.ts`, it re-derives trends from `sessions`/`debriefs` at read time; nothing is tracked as an event anywhere. Any retention/engagement hypothesis below is unfalsifiable without this.
+- **Scope (undecided — needs its own PRD before building)**: pick an approach (lightweight custom `events` table vs. a tool like PostHog), instrument at minimum: session start, session complete, debrief viewed, drill-loop used, return session (2nd+ completed session by the same `user_email`).
+- **Complexity**: TBD — depends on build-vs-buy decision
+- **Status**: Not started. Blocks the item below.
+
+### Feature: Rings / Referral / Help-Credit Loop (Discovery stage complete, paused here)
+Surfaced from a product-design discussion (2026-08-26): PrepSignals has no return mechanic today — one session, one debrief, nothing pulls the user back. Discussed and refined into a specific proposal, grounded in the `product-design-principles` skill's gamification research (Sailer et al. 2017 — engagement mechanics build autonomy/relatedness but not competence, which is the thing this product should actually build).
+
+- **Hypothesis**: Replacing "no return mechanic" with a competence-anchored closure loop increases 2nd-session return rate without degrading trust signals (session abandonment, qualitative feedback).
+- **Mechanic** — kept to 2 systems total, per the research's "feature-richness ceiling" (stacking 3+ mechanics tends to reduce engagement, not increase it):
+  1. **Closure rings** — one ring per `priority_risks` entry from the user's first debrief (2-3 signals, already computed, no new data needed). Closes when the drill loop (`POST /api/interview/drill`) brings that signal back above threshold.
+  2. **Reward moment** — partial ring closure unlocks a referral-bonus ask, bundled into the *same* screen as the milestone badge (not a separate ask) — leans on commitment-consistency, asking for advocacy while the "I'm improving" self-signal is fresh. Full closure grants help-credits.
+- **Explicitly scoped OUT of live sessions**: help-credit hints spend only inside the existing ephemeral drill loop (`POST /api/interview/drill`, never writes to `qa_pairs`/`debrief_data`) — never in a live scored session, because `hire_probability` is deterministically computed from the candidate's own verbatim answers (`lib/rubric-researched.ts`), and a hinted answer scored through that same pipeline would silently corrupt the signal.
+- **Non-goals**: not a funnel/acquisition fix (ICP-first redesign's job), not a monetization mechanism yet (credit→free-month conversion blocked on pricing, which isn't decided), doesn't re-litigate debrief quality.
+- **Open detail**: help-credit cap = `floor(0.7 × total_questions_in_round)`, all questions counted in the denominator including intro questions (e.g. 8-question round → 5 hint-eligible drill attempts).
+- **Complexity**: M/L (rings UI + badge/referral flow + credit ledger) once the analytics prerequisite unblocks measurable success criteria
+- **Status**: PDLC Stage 1 (Discovery) complete. Paused here per user direction — defining success metrics (Stage 2) without a way to measure them isn't useful; resume once the analytics prerequisite above is scheduled.
+
+---
+
 ## 📋 Week 3 — Monetisation (Not Yet Planned)
 - PhonePe payment integration
 - Shareable debrief card (LinkedIn/WhatsApp)
