@@ -2,6 +2,17 @@
 
 How work gets delegated across PrepSignals as a one-person company: what each seat can decide on its own, and what always comes back to Anshuman. This is the versioned source of truth; a designed presentation of the same content was published as an artifact during the session this was built in — this file is what future sessions in this repo should actually read.
 
+## Reaching Chief of Staff
+
+Two confirmed access surfaces:
+
+- **Persistent Claude Code Remote session** — reachable from any device via claude.ai/code, no laptop or active terminal required. Full conversation memory within the session (re-derives dynamic state — git/`ops/`/PRs/`BACKLOG.md` — fresh every turn per its own file, per its durable-state principle; trusts static reference material only once, at session start).
+- **Daily push-notified check-in (Routine)** — fires into a fresh session each day, reads the same state, surfaces anything pending as an explicit decision, pushes a notification. No persistent memory across days by design — the persistent session above is where continuity lives.
+
+**Slack — investigated, not available.** Claude Tag (Claude in Slack) would have been the real mechanism for a live "@-mention Chief of Staff in Slack" experience — not a member account with its own email, which was the original (incorrect) mental model. It's Enterprise-plan only; PrepSignals runs on an Individual plan, so this is closed for now, not unresolved. Revisit only if the plan tier changes — don't re-investigate the mechanism from scratch, it's already known (Claude admin console install, `@Claude` mention in-channel; whether it supports a fixed custom persona or repo-scoping was never confirmed before the plan-tier blocker ended the investigation).
+
+**A Telegram/Discord-style bot bridge — considered, declined on cost.** Technically real (a small self-hosted service calling the Anthropic API directly, bridged to a messaging platform's bot API), but it's infrastructure outside everything else here: its own hosting, its own separately-billed Anthropic API key, and its own GitHub credential if it needs live repo state — none of it covered by existing Claude usage. Declined specifically for that added standalone cost, not for a technical reason. If cost stops being the blocker, this is the option to revisit; the two surfaces above are what's actually active in the meantime.
+
 ## Access tiers
 
 - **Read-Only** — no write tools. Produces a review, a recommendation, a risk flag — never touches anything itself.
