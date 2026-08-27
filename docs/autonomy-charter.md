@@ -46,6 +46,21 @@ Business (Associate → Director) as originally proposed is folded into Product 
 
 **Phase 1+:** each head builds out its own reports, in this order — Tech's remaining seats first (done this session too, since the pipeline needs Coder/Tester/Debugger to be useful at all), then Legal + Analytics in parallel (no external blast radius, useful today), then Product, then Marketing + Institutional Sales (once Monetisation ships), then Lifecycle.
 
+## Operating rule: persistent sessions don't self-refresh
+
+A Claude Code Remote session's Agent-tool roster is fixed when that session's container
+starts. If `.claude/agents/*.md` changes on `main` afterward — a new seat, an edited
+mandate, a model swap — a persistent session created before that change will not pick it
+up. Merging the PR is not enough; the session itself has to be recreated. This was found
+the hard way: a persistent Chief of Staff session created before PR #30 merged still
+couldn't invoke any of the 12 seats after the merge, because the session (not the repo)
+was stale.
+
+**Rule:** any time the agent-org files change on `main`, every persistent monitoring
+session that already exists — Chief of Staff today, any future per-head session — gets
+recreated, not just notified. Verify with a real invocation after recreating, not an
+assumption that it now works.
+
 ## Seats, table by table
 
 Full per-seat mandate, model, and skill assignment lives in `.claude/agents/*.md` — one file per built seat. This doc tracks the org shape and the gate; the agent files are the operational detail and are the ones that actually run.

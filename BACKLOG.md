@@ -25,7 +25,24 @@ reports exist, each head's first job being to spec its own team).
 ### Still open
 - Phase 1+ (each head building its own reports) not started — waits on Anshuman reviewing each head's Phase 0 hiring spec first.
 - Marketplace plugins (`legal`, `operations`, `data`, etc.) identified but not installed — installing is an account-level action the user hasn't triggered yet.
-- Not verified: whether `main` actually has GitHub branch protection enabled — the real backstop behind Coder's "never push to main" instruction. Flagged, not checked.
+- Not verified: whether `main` actually has GitHub branch protection enabled — the real backstop behind Coder's "never push to main" instruction. Flagged, not checked. No branch-protection tool exists in the available GitHub MCP toolset either — this has to be done manually by Anshuman via GitHub's own Settings → Branches UI.
+
+## ✅ Done (Session — 2026-08-27, standing 24/7 access + stale-session fix)
+
+Built round-the-clock access to Chief of Staff outside of an active Claude Code session
+(a persistent Claude Code Remote session + a daily push-notified Routine), then found and
+fixed a real bug in it via the user's own verification test.
+
+| Task | Notes |
+|---|---|
+| Persistent Chief of Staff session | Reachable from any device via claude.ai/code, no laptop or active terminal required. Runs Sonnet (downgraded from the original Opus design — explicit user cost decision, "no seat gets a pass"), same downgrade applied to `chief-of-staff.md`'s `model:` field so the source of truth matches. |
+| Daily push-notified check-in (Routine) | Fires ~8:33am IST into a fresh session, reads `ops/`+git+PRs+`BACKLOG.md`, frames anything pending as an explicit decision ("ship these? yes/no") rather than a passive status report. No MCP connectors on the Routine — verified by the platform itself at creation, not just by instruction. |
+| Bug found: stale session couldn't invoke any department head | User ran a real verification test (invoke `director-of-compliance` + `reviewer`, report raw output) against the persistent session and got `Agent type not found` for both, even after merging the PR that added them. Root cause confirmed by direct check: `main` had all 12 files; the *session* was stale, created before the merge, and a session's Agent-tool roster doesn't self-refresh against upstream changes. |
+| Fix | `chief-of-staff.md`: durable-state principle (re-check `git`/`ops/`/PRs/`BACKLOG.md` every turn; trust the mandate/gate-list/org-map only once, at session start — targets both the staleness bug and token cost) + explicit MCP-vs-git clarification (no connector needed to see a git push, the real fix is fetching fresh). `docs/autonomy-charter.md`: new standing operating rule — any agent-org file change on `main` requires recreating every persistent monitoring session, not just merging the PR. |
+
+### Still open
+- New persistent Chief of Staff session (replacing the stale one) needs the same two-seat verification test re-run for real before being trusted.
+- The daily Routine's own environment source should be confirmed/pinned to `main` the same way — not yet independently verified as of this entry.
 
 ---
 
