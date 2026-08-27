@@ -27,6 +27,11 @@ Stack: Next.js 16 (App Router), TypeScript, Tailwind CSS, Neon Postgres, Groq AP
 - Conversational metrics (Talk ratio, SNR, Latency, Interruptions) — shown with research-backed benchmarks, not raw numbers alone
 - Do not expose LLM internals (BARS scoring logic, rubric weights, signal IDs) in user-facing copy
 
+### Agent Org
+- This repo has an AI agent org defined in `.claude/agents/` — Phase 0 built 2026-08-27: Chief of Staff, the full Tech pod (Planner/Coder/Tester/Debugger/Reviewer), and the remaining 6 department heads (Director of Compliance, Director of Analytics, VP Product, Marketing Director, Sales Head, VP of Monetization), all reporting to Chief of Staff rather than directly to Anshuman
+- Full reference: `docs/autonomy-charter.md` — access tiers, org map, phased rollout
+- **The Article II gate list applies to every agent seat regardless of tier or which session is running it**: real money spent, a message reaching a real external person, anything legal (ToS/filings/contracts), pricing changes, prod DB writes, a push to `main` or a merge without Reviewer's sign-off, any user-facing `hire_probability`/BARS/rubric exposure (this repeats the two rules above — the point is it's not re-litigated per department), hiring/contracts. No automated seat holds real external-system credentials (email send, payments, ad platforms) — only the interactive session Anshuman is driving does.
+
 ## Key Architecture Decisions
 - **Evidence-first scoring**: LLM extracts verbatim quotes per signal; TS calculates hire_probability (vibe-proof)
 - **Seniority modifiers**: `calculateNormalizedScore()` applies Junior/Mid/Senior weights from `lib/rubric-researched.ts`
