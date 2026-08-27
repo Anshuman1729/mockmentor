@@ -710,7 +710,7 @@ type Synthesis = Pick<
 // model_answers only ever targets weak (<=3) signals. Never fails closed:
 // any missing input (empty question_walkthrough, empty weakSignals) falls
 // back to the full transcript.
-function buildSynthesisTranscript(qas: QAPair[], scoring: CoreScoring, maxAnswerChars: number): string {
+export function buildSynthesisTranscript(qas: QAPair[], scoring: CoreScoring, maxAnswerChars: number): string {
   const fullTranscript = qas
     .map(
       (qa) =>
@@ -734,6 +734,16 @@ function buildSynthesisTranscript(qas: QAPair[], scoring: CoreScoring, maxAnswer
       .map((entry) => entry.question_number)
   );
 
+  // How many distinct weak signals each walkthrough entry touches — the
+  // relevance signal used to rank qualifying entries below. An entry not in
+  // the walkthrough (e.g. one of the floor-at-3 pad entries) counts as 0.
+  const weakSignalCountByQuestion = new Map<number, number>(
+    walkthrough.map((entry) => [
+      entry.question_number,
+      (entry.signal_ids ?? []).filter((id) => weakSignals.has(id)).length,
+    ])
+  );
+
   let selected = qas.filter((qa) => relevantQuestionNumbers.has(qa.question_number));
   // Floor at 3 — pad with whatever else is available, in original order, if
   // the weak-signal match came back thinner than that.
@@ -744,9 +754,18 @@ function buildSynthesisTranscript(qas: QAPair[], scoring: CoreScoring, maxAnswer
       if (!selectedNumbers.has(qa.question_number)) selected.push(qa);
     }
   }
-  // Cap at 5 — no priority_risks synthesis needs more source material than that.
+  // Cap at 5 — ranked by relevance (how many distinct weak signals the
+  // entry's question_walkthrough touches) descending, so the strongest
+  // evidence survives the cap regardless of where it fell in the interview.
+  // Ties (including the 0-count pad entries above) break by ascending
+  // question index for deterministic, testable behavior.
   selected = selected
-    .sort((a, b) => a.question_number - b.question_number)
+    .sort((a, b) => {
+      const countDiff =
+        (weakSignalCountByQuestion.get(b.question_number) ?? 0) -
+        (weakSignalCountByQuestion.get(a.question_number) ?? 0);
+      return countDiff !== 0 ? countDiff : a.question_number - b.question_number;
+    })
     .slice(0, 5);
 
   if (selected.length === 0) return fullTranscript;

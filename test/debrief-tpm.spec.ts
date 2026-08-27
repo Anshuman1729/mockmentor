@@ -27,6 +27,7 @@ import {
   estimateTokens,
   decideSynthesisGate,
   generateDebrief,
+  buildSynthesisTranscript,
   DebriefSynthesisDeferredError,
   type SessionContext,
   type QAPair,
@@ -119,6 +120,147 @@ describe('decideSynthesisGate', () => {
       maxInlineWaitMs: 20000,
     });
     expect(result).toEqual({ action: 'defer', retryAfterMs: 30000 });
+  });
+});
+
+// ─── buildSynthesisTranscript ────────────────────────────────────────────────
+function makeQa(n: number): QAPair {
+  return { question_number: n, question: `Question text ${n}`, answer: `Answer text ${n}` };
+}
+
+function makeScoring(
+  weakParamIds: string[],
+  walkthrough: Array<{ question_number: number; signal_ids: string[] }>
+): CoreScoring {
+  return {
+    metrics: {
+      talk_to_listen_ratio: '70/30',
+      avg_response_latency_sec: 2.0,
+      signal_to_noise_ratio: 0.4,
+      interruption_count: 0,
+    },
+    skill_analysis: weakParamIds.map((id) => ({
+      parameter_id: id,
+      rating: 2,
+      reasoning: 'weak',
+      evidence_quotes: ['quote'],
+    })),
+    question_walkthrough: walkthrough.map((w) => ({
+      question_number: w.question_number,
+      key_takeaway: `takeaway ${w.question_number}`,
+      signal_ids: w.signal_ids,
+    })),
+  };
+}
+
+const includesQ = (transcript: string, n: number) => transcript.includes(`Q${n}: Question text ${n}`);
+
+describe('buildSynthesisTranscript', () => {
+  it('ranks an entry touching 2 weak signals above ones touching only 1, even when it comes later', () => {
+    const qas = [1, 2, 3, 4, 5, 6].map(makeQa);
+    // Q1-Q5 each touch 1 weak signal; Q6 (the last question) touches both.
+    const scoring = makeScoring(
+      ['SIGNAL_A', 'SIGNAL_B'],
+      [
+        { question_number: 1, signal_ids: ['SIGNAL_A'] },
+        { question_number: 2, signal_ids: ['SIGNAL_A'] },
+        { question_number: 3, signal_ids: ['SIGNAL_A'] },
+        { question_number: 4, signal_ids: ['SIGNAL_A'] },
+        { question_number: 5, signal_ids: ['SIGNAL_A'] },
+        { question_number: 6, signal_ids: ['SIGNAL_A', 'SIGNAL_B'] },
+      ]
+    );
+
+    const transcript = buildSynthesisTranscript(qas, scoring, 4000);
+
+    // Naive ascending-index-then-slice(5) would keep Q1-Q5 and drop Q6 —
+    // the single most relevant entry. The fix must keep Q6 and drop the
+    // lowest-ranked tail entry (Q5) instead.
+    expect(includesQ(transcript, 6)).toBe(true);
+    expect(includesQ(transcript, 5)).toBe(false);
+    expect(includesQ(transcript, 1)).toBe(true);
+    expect(includesQ(transcript, 2)).toBe(true);
+    expect(includesQ(transcript, 3)).toBe(true);
+    expect(includesQ(transcript, 4)).toBe(true);
+  });
+
+  it('breaks ties by ascending question index, deterministically', () => {
+    const qas = [1, 2, 3, 4, 5, 6].map(makeQa);
+    // All 6 touch exactly 1 weak signal each — pure tie on relevance.
+    const scoring = makeScoring(
+      ['SIGNAL_A'],
+      [1, 2, 3, 4, 5, 6].map((n) => ({ question_number: n, signal_ids: ['SIGNAL_A'] }))
+    );
+
+    const transcript = buildSynthesisTranscript(qas, scoring, 4000);
+
+    // Cap at 5, tie-broken ascending -> keep Q1-Q5, drop Q6.
+    for (const n of [1, 2, 3, 4, 5]) expect(includesQ(transcript, n)).toBe(true);
+    expect(includesQ(transcript, 6)).toBe(false);
+
+    // Deterministic across repeated calls.
+    expect(buildSynthesisTranscript(qas, scoring, 4000)).toBe(transcript);
+  });
+
+  it('floors at 3 by padding with non-matching entries when fewer than 3 qualify', () => {
+    const qas = [1, 2, 3, 4].map(makeQa);
+    const scoring = makeScoring(
+      ['SIGNAL_A'],
+      [
+        { question_number: 1, signal_ids: ['SIGNAL_A'] },
+        { question_number: 2, signal_ids: ['SIGNAL_B'] },
+        { question_number: 3, signal_ids: ['SIGNAL_B'] },
+        { question_number: 4, signal_ids: ['SIGNAL_B'] },
+      ]
+    );
+
+    const transcript = buildSynthesisTranscript(qas, scoring, 4000);
+    const includedCount = [1, 2, 3, 4].filter((n) => includesQ(transcript, n)).length;
+    expect(includedCount).toBe(3);
+    expect(includesQ(transcript, 1)).toBe(true); // the one genuine match must survive
+  });
+
+  it('caps at 5 even when more than 5 entries qualify', () => {
+    const qas = [1, 2, 3, 4, 5, 6, 7].map(makeQa);
+    const scoring = makeScoring(
+      ['SIGNAL_A'],
+      [1, 2, 3, 4, 5, 6, 7].map((n) => ({ question_number: n, signal_ids: ['SIGNAL_A'] }))
+    );
+
+    const transcript = buildSynthesisTranscript(qas, scoring, 4000);
+    const includedCount = [1, 2, 3, 4, 5, 6, 7].filter((n) => includesQ(transcript, n)).length;
+    expect(includedCount).toBe(5);
+  });
+
+  it('falls back to the full transcript when question_walkthrough is empty', () => {
+    const qas = [1, 2, 3].map(makeQa);
+    const scoring = makeScoring(['SIGNAL_A'], []);
+
+    const transcript = buildSynthesisTranscript(qas, scoring, 4000);
+    for (const n of [1, 2, 3]) expect(includesQ(transcript, n)).toBe(true);
+  });
+
+  it('falls back to the full transcript when there are no weak signals (all ratings > 3)', () => {
+    const qas = [1, 2, 3].map(makeQa);
+    const scoring: CoreScoring = {
+      metrics: {
+        talk_to_listen_ratio: '70/30',
+        avg_response_latency_sec: 2.0,
+        signal_to_noise_ratio: 0.4,
+        interruption_count: 0,
+      },
+      skill_analysis: [
+        { parameter_id: 'SIGNAL_A', rating: 5, reasoning: 'strong', evidence_quotes: ['quote'] },
+      ],
+      question_walkthrough: [1, 2, 3].map((n) => ({
+        question_number: n,
+        key_takeaway: `takeaway ${n}`,
+        signal_ids: ['SIGNAL_A'],
+      })),
+    };
+
+    const transcript = buildSynthesisTranscript(qas, scoring, 4000);
+    for (const n of [1, 2, 3]) expect(includesQ(transcript, n)).toBe(true);
   });
 });
 
