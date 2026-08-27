@@ -153,7 +153,7 @@ export const INTERVIEW_RUBRIC: Record<string, SignalParameter> = {
  *   - SITUATION_ACTION_RESULT: behavioral/story answers (simplified STAR)
  *   - ANSWER_REASONING_TRADEOFF: analytical/technical answers
  * `generateDebrief`'s model_answers[].framework must name one of these
- * three (see FEW_SHOT_EXAMPLES in lib/groq.ts) so the LLM's rewritten
+ * three (see SYNTHESIS_EXAMPLE in lib/groq.ts) so the LLM's rewritten
  * answers stay consistent with what's taught here.
  */
 export interface CanonicalFramework {

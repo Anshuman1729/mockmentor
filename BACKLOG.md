@@ -281,6 +281,18 @@ payment gateway, no pricing decided — so the funnel stops at interview complet
     something with real Fatal-Flag-threshold implications. `interview_depth` sources only from the
     debrief route's copy (the one already exercised in production), so this pass didn't change behavior
     anywhere — just surfaced a pre-existing inconsistency.
+- **`debrief_generation_failed` added (2026-08-27)** — a real production test hit the Groq-TPM-capacity
+  failure message (from PR #23, merged separately) and correctly produced zero Mixpanel events, because
+  `track("session_completed", ...)` only ever runs in the success path, right before the function's
+  final `return`. Any exception — this one included — jumped straight to `catch` with no tracking call
+  at all, making a backend failure indistinguishable in the funnel from a user silently closing the tab.
+  Fixed: `sessionId`/`userId` hoisted out of the `try` block (previously try-scoped `const`s, unreachable
+  from `catch`); `KNOWN_SAFE_MESSAGES` changed from a `Set` to a `Map` so each known failure message also
+  carries a short `reason` code (`transcript_too_large`, `rate_limited`, `truncated`, etc., `"unknown"`
+  for anything else); catch block now fires `debrief_generation_failed` with that reason before
+  returning the error response. Also fixed, found while hoisting: `assertSessionOwner(sessionId)` was
+  being called before the `!sessionId` presence check (masked previously by `req.json()`'s untyped
+  `any` — surfaced immediately once `sessionId` got an explicit type). typecheck/lint/vitest clean.
 - **Open interpretation questions** (implemented my best reading, flagged for confirmation): "interview
   depth" — read as question count per round (`totalQuestions`), not YOE/seniority, since
   `technical_deep_dive` already uses "depth" in exactly this sense. "Interview time" and "interview
@@ -305,6 +317,52 @@ Surfaced from a product-design discussion (2026-08-26): PrepSignals has no retur
 - **Open detail**: help-credit cap = `floor(0.7 × total_questions_in_round)`, all questions counted in the denominator including intro questions (e.g. 8-question round → 5 hint-eligible drill attempts).
 - **Complexity**: M/L (rings UI + badge/referral flow + credit ledger) once the analytics prerequisite unblocks measurable success criteria
 - **Status**: PDLC Stage 1 (Discovery) complete. Paused here per user direction — defining success metrics (Stage 2) without a way to measure them isn't useful; resume once the analytics prerequisite above is scheduled.
+
+---
+
+## 🔴 Fixed (2026-08-27) — Debrief generation hitting Groq TPM ceiling regardless of interview length
+
+Real production bug, reported live: a *short* interview hit the same 413 ("transcript too large") as a
+long one — proof it wasn't actually about transcript size. Root-caused and fixed in `lib/groq.ts`.
+
+- **Root cause, quantified, not guessed**: Groq's TPM rate limiter counts the reserved `max_tokens`
+  toward the budget, not just actual prompt tokens. `generateDebrief()`'s single call had
+  `max_tokens: 12000` — 1.5x the account's entire 8000 TPM ceiling *by itself*, before a single prompt
+  token was counted. Measured the fixed prompt overhead directly from source (few-shot examples ~2,300
+  tokens, rubric ~420, instructions+schema ~2,200 ≈ ~5,000 tokens fixed, present on every call regardless
+  of transcript length) — confirms why a short interview failed identically to a long one: the fixed
+  overhead dominated, not the transcript.
+- **Fix**: split `generateDebrief()` into two Groq calls along the real dependency boundary —
+  1. **Scoring** (`skill_analysis`, `metrics`, `question_walkthrough` — evidence read directly off the
+     transcript), `max_tokens: 2500`
+  2. **Synthesis** (`priority_risks`, `model_answers`, `overall_impression`, `behavioral_insights`,
+     `actionable_feedback` — reasons *about* the scoring), `max_tokens: 1800`, receives Call 1's
+     `skill_analysis`/`question_walkthrough` as grounding context, and drops the JD block entirely
+     (synthesis doesn't need the JD text again — role/company/round_type plus the transcript and Call 1's
+     scoring already ground it; the JD was the single largest reusable chunk not worth paying for twice).
+  Extracted the shared call+error-handling (`runDebriefCompletion`) and JSON-parse (`parseDebriefJson`)
+  logic so the 413/rate-limit/bad-request mapping isn't duplicated across both call sites.
+- **`max_tokens` right-sized from measurement, not guesswork**: simulated realistic output JSON for both
+  calls — scoring actually needs ~1,570 tokens (8 signals + 8 question_walkthrough entries), synthesis
+  ~850 (3 risks + 3 model_answers). Original values (12000 single-call; my first draft's 4000/3500 split)
+  were reserving far more than ever gets used — every unused reserved token is TPM budget taken directly
+  from the transcript's headroom.
+- **Verified quantitatively across 3 scenarios** (simulated prompts with realistic data, same method used
+  to diagnose the bug — this sandbox has no live `GROQ_API_KEY` to test end-to-end):
+  | Scenario | Call 1 (scoring) | Call 2 (synthesis) | Fits 8000 TPM? |
+  |---|---|---|---|
+  | Short (5q, ~40w/answer) — the reported bug | ~5,252 | ~5,784 | ✅ |
+  | Typical (8q, ~150w/answer) | ~6,786 | ~7,518 | ✅ (smallest margin ~480 tokens) |
+  | Verbose (8q, ~700w/answer, near the existing 4000-char/answer cap) | ~13,071 | ~13,803 | ❌ |
+- **Known residual risk, not solved here**: a genuinely verbose interview (~5,000 total words across
+  answers, near the per-answer cap) can still overflow. Deliberately not addressed in this pass —
+  tightening `MAX_ANSWER_CHARS` further trades against legitimate long, substantive answers (the whole
+  reason that cap is 4000 chars and not smaller), and that's a product-quality call, not an engineering
+  one to make silently.
+- **Verified**: typecheck/lint/vitest clean. Not verified against the live Groq API (no working
+  `GROQ_API_KEY` egress in this sandbox — same limitation noted elsewhere in this file). Needs a real
+  interview run through to confirm no regression in report quality from the prompt split, in addition to
+  confirming the 413 is actually gone.
 
 ---
 
