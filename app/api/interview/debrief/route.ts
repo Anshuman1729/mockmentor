@@ -9,15 +9,20 @@ import { checkFatalFlag } from "@/lib/fatal-flag";
 import { track, stableInsertId } from "@/lib/analytics";
 
 export async function POST(req: NextRequest) {
+  // Hoisted out of the try block so the catch block below can attribute a
+  // failure event to the right session/user — previously these were
+  // try-scoped consts, and a debrief-generation failure had zero analytics
+  // visibility (indistinguishable from the user just closing the tab).
+  let sessionId: string | undefined;
+  let userId: string | null = null;
   try {
-    const { sessionId } = await req.json();
-    const authCheck = await assertSessionOwner(sessionId);
-    if (!authCheck.ok) return authCheck.response;
-    const { userId } = await auth();
-
+    ({ sessionId } = await req.json());
     if (!sessionId) {
       return NextResponse.json({ error: "sessionId is required" }, { status: 400 });
     }
+    const authCheck = await assertSessionOwner(sessionId);
+    if (!authCheck.ok) return authCheck.response;
+    ({ userId } = await auth());
 
     const sessions = await sql`SELECT * FROM sessions WHERE id = ${sessionId}`;
     if (sessions.length === 0) {
@@ -228,19 +233,28 @@ export async function POST(req: NextRequest) {
     // generateDebrief (truncated/malformed/incomplete LLM response) — never
     // an arbitrary caught error's message, which could leak internals (DB
     // errors, stack details, etc.). Everything else stays the generic message.
-    const KNOWN_SAFE_MESSAGES = new Set([
-      "The report generation ran out of room and was cut off — please try again.",
-      "The report came back malformed — please try again.",
-      "The report came back incomplete — please try again.",
-      "This interview's transcript is too large for the AI service's current capacity — please contact support.",
-      "The AI service is rate-limited right now — please wait a minute and try again.",
-      "Your interview transcript was too long for the report to process — please contact support.",
-      "The AI service returned an unexpected error — please try again in a moment.",
+    const KNOWN_SAFE_MESSAGES = new Map([
+      ["The report generation ran out of room and was cut off — please try again.", "truncated"],
+      ["The report came back malformed — please try again.", "malformed"],
+      ["The report came back incomplete — please try again.", "incomplete_response"],
+      ["This interview's transcript is too large for the AI service's current capacity — please contact support.", "transcript_too_large"],
+      ["The AI service is rate-limited right now — please wait a minute and try again.", "rate_limited"],
+      ["Your interview transcript was too long for the report to process — please contact support.", "transcript_too_long"],
+      ["The AI service returned an unexpected error — please try again in a moment.", "upstream_error"],
     ]);
-    const message =
-      err instanceof Error && KNOWN_SAFE_MESSAGES.has(err.message)
-        ? err.message
-        : "Failed to generate debrief";
+    const reason = err instanceof Error ? KNOWN_SAFE_MESSAGES.get(err.message) : undefined;
+    const message = reason ? (err as Error).message : "Failed to generate debrief";
+
+    // Own event, not folded into session_completed — a failure here means
+    // the session did NOT complete, so this has to stay visibly distinct in
+    // the funnel from both a successful completion and silent user drop-off.
+    if (sessionId) {
+      track("debrief_generation_failed", userId ?? "unknown", {
+        reason: reason ?? "unknown",
+        $insert_id: stableInsertId(sessionId, "debrief_generation_failed", reason ?? "unknown"),
+      });
+    }
+
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

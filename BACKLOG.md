@@ -281,6 +281,18 @@ payment gateway, no pricing decided — so the funnel stops at interview complet
     something with real Fatal-Flag-threshold implications. `interview_depth` sources only from the
     debrief route's copy (the one already exercised in production), so this pass didn't change behavior
     anywhere — just surfaced a pre-existing inconsistency.
+- **`debrief_generation_failed` added (2026-08-27)** — a real production test hit the Groq-TPM-capacity
+  failure message (from PR #23, merged separately) and correctly produced zero Mixpanel events, because
+  `track("session_completed", ...)` only ever runs in the success path, right before the function's
+  final `return`. Any exception — this one included — jumped straight to `catch` with no tracking call
+  at all, making a backend failure indistinguishable in the funnel from a user silently closing the tab.
+  Fixed: `sessionId`/`userId` hoisted out of the `try` block (previously try-scoped `const`s, unreachable
+  from `catch`); `KNOWN_SAFE_MESSAGES` changed from a `Set` to a `Map` so each known failure message also
+  carries a short `reason` code (`transcript_too_large`, `rate_limited`, `truncated`, etc., `"unknown"`
+  for anything else); catch block now fires `debrief_generation_failed` with that reason before
+  returning the error response. Also fixed, found while hoisting: `assertSessionOwner(sessionId)` was
+  being called before the `!sessionId` presence check (masked previously by `req.json()`'s untyped
+  `any` — surfaced immediately once `sessionId` got an explicit type). typecheck/lint/vitest clean.
 - **Open interpretation questions** (implemented my best reading, flagged for confirmation): "interview
   depth" — read as question count per round (`totalQuestions`), not YOE/seniority, since
   `technical_deep_dive` already uses "depth" in exactly this sense. "Interview time" and "interview
