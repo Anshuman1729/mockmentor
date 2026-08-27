@@ -32,7 +32,7 @@ export async function GET(_req: NextRequest) {
         d.debrief_data->'skill_analysis' AS skill_analysis
       FROM sessions s
       JOIN debriefs d ON d.session_id = s.id
-      WHERE s.user_email = ${user_email} AND s.status = 'completed'
+      WHERE s.user_email = ${user_email} AND s.status = 'completed' AND s.round_type != 'quick_test'
       ORDER BY s.created_at ASC
       LIMIT 100
     `;

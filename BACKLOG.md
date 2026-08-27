@@ -366,6 +366,40 @@ long one — proof it wasn't actually about transcript size. Root-caused and fix
 
 ---
 
+## 🔴 Added (2026-08-27) — Hidden quick-test route for the debrief pipeline
+
+Direct ask: testing debrief-generation changes (like the TPM fix above) required a full 5-8 question
+interview every time — too slow to iterate on. Built a hidden shortcut that generates a real 1-question
+debrief through the actual production pipeline.
+
+- **Materially different from the existing `/dev/*` tools** (`app/dev/debrief`, DB-free mock preview
+  using fake data) — this one writes real rows into production `sessions`/`qa_pairs`/`debriefs` and calls
+  the real, paid Groq API each time. Flagged this distinction explicitly before building, since an
+  obscure-URL-only "hidden" route calling a paid LLM API is a real cost/abuse surface, not just a
+  convenience.
+- **Access control**: `POST /api/dev/quick-test` requires a signed-in Clerk session (default-protected —
+  not added to `proxy.ts`'s `isPublicRoute`) *and* the caller's email must exactly match
+  `DEV_TEST_ALLOWED_EMAIL` (fails closed if that env var isn't set) — identity-based, not a secret token
+  in the URL (which can leak via browser history/referrer headers/logs). Set to
+  `khare.anshuman47@gmail.com` in `.env.local`; **still needed**: the same var added to Vercel.
+- **New round_type**: `quick_test` → 1 question, added as a real, explicit entry in
+  `app/api/interview/debrief/route.ts`'s `QUESTIONS_BY_ROUND` (not a bypass hack around the completeness
+  gate — same map, same code path).
+- **Reuses the real pipeline, not a parallel one**: `app/api/dev/quick-test/route.ts` inserts 1 session +
+  1 `qa_pairs` row directly, then internally calls `POST /api/interview/debrief` (forwarding cookies for
+  auth) — same Groq calls, same error handling, same `debrief_generation_failed` tracking as a real user
+  would hit. `/dev/quick-test` (page) is a small form (role/company/answer, all optional) reusing
+  `DebriefLoadingScreen`, redirects to the real `/debrief/[sessionId]` page on success — and shows the
+  *actual* error message inline on failure, useful for testing the error path too.
+- **Kept out of real analytics**: `round_type != 'quick_test'` added to `GET /api/sessions`, `GET
+  /api/sessions/analytics`, and the cross-session `history` query in `GET /api/sessions/[sessionId]` —
+  repeated test runs won't clutter the real session list or skew `/progress` trend data. Mixpanel events
+  from quick-test sessions carry `is_test: true` instead of being suppressed entirely — still checkable in
+  Live View, still filterable out of real funnel analysis.
+- **Status**: Code complete, typecheck/lint/vitest clean. Not yet used for a real test run.
+
+---
+
 ## 📋 Week 3 — Monetisation (Not Yet Planned)
 - PhonePe payment integration
 - Shareable debrief card (LinkedIn/WhatsApp)
