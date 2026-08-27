@@ -363,16 +363,29 @@ ADAPTABILITY_GROWTH (weight 8%): 1=Resistant (defensive, ignores hints) | 3=Rece
 EDGE_CASE_MASTERY (weight 7%): 1=Surface-level (misses failure modes, assumes happy path) | 3=Aware (identifies basic edge cases when asked) | 5=Preemptive (proactively flags race conditions, scale risks)
 `.trim();
 
-const FEW_SHOT_EXAMPLES = `
-[FEW-SHOT EXAMPLES — follow this exact JSON structure and evidence style]
+// ─── Debrief generation — split into two Groq calls ─────────────────────────
+// Was one call with max_tokens:12000. Groq's TPM rate limiter counts the
+// reserved max_tokens toward the budget, not just actual prompt size — so on
+// an 8000 TPM account tier, max_tokens:12000 alone exceeded the entire
+// budget before a single prompt token was counted, regardless of transcript
+// length. Confirmed in production: a very short interview hit the identical
+// 413 as a long one, because the fixed prompt overhead (few-shot examples,
+// rubric, schema, instructions) dominated over the transcript either way.
+//
+// Split along the real dependency boundary: raw scoring (skill_analysis,
+// metrics, question_walkthrough — evidence read directly off the transcript)
+// produces the foundation; synthesis (priority_risks, model_answers,
+// overall_impression, behavioral_insights, actionable_feedback) reasons
+// ABOUT that scoring, not just against the transcript, so it runs second and
+// receives Call 1's skill_analysis as grounding context. Synthesis still
+// needs the transcript too — model_answers pulls fresh verbatim quotes that
+// don't have to already be in evidence_quotes. Each call's own prompt+
+// max_tokens is sized to stay comfortably under an 8000 TPM ceiling; see the
+// token-budget comments on each max_tokens value below.
 
---- Example 1: Strong Hire (TECHNICAL_DEPTH 5, RESULT_ORIENTATION 5) ---
+const CORE_SCORING_EXAMPLE = `
+[EXAMPLE — follow this exact JSON structure and evidence style; one signal and one question shown, produce all 8 signals and one question_walkthrough entry per answered question]
 {
-  "summary": {
-    "recommendation": "Strong Hire",
-    "hire_probability": 0,
-    "overall_impression": "Easy yes — expert-level depth on distributed systems, trade-offs surfaced before I had to ask, and every claim backed by a real number. I'd fast-track this one."
-  },
   "metrics": {
     "talk_to_listen_ratio": "68/32",
     "avg_response_latency_sec": 2.0,
@@ -388,15 +401,6 @@ const FEW_SHOT_EXAMPLES = `
         "We used sticky partition assignors to reduce rebalance latency from 8 seconds down to under 400ms in our consumer fleet",
         "I specifically chose transactional producers over idempotent-only because we needed cross-partition atomicity for our order state machine"
       ]
-    },
-    {
-      "parameter_id": "RESULT_ORIENTATION",
-      "rating": 5,
-      "reasoning": "Every answer closed with a specific metric — p99 latency, revenue impact, or error rate reduction.",
-      "evidence_quotes": [
-        "That migration cut our p99 from 340ms to 90ms and dropped infrastructure cost by 23 percent quarter-over-quarter",
-        "The feature launched to 100 percent of users within two weeks and drove a 7 percent lift in checkout conversion"
-      ]
     }
   ],
   "question_walkthrough": [
@@ -405,63 +409,16 @@ const FEW_SHOT_EXAMPLES = `
       "key_takeaway": "Opened with a specific rebalancing latency fix (8s to 400ms) instead of a generic self-intro — immediately signaled hands-on ownership of production systems, the kind of concrete detail that earns trust in the first 60 seconds of a screen.",
       "signal_ids": ["TECHNICAL_DEPTH", "RESULT_ORIENTATION"]
     }
-  ],
-  "priority_risks": [],
-  "model_answers": [],
-  "path_to_next_tier": "Already at the top tier for this rubric — the only stretch is a stronger cross-functional stakeholder narrative in behavioral answers.",
-  "behavioral_insights": {
-    "star_adherence_score": 92,
-    "confidence_level": "High",
-    "confidence_rationale": "Based on 5 substantive, technically detailed answers with consistent quantified outcomes across every question.",
-    "red_flags": []
-  },
-  "actionable_feedback": {
-    "strengths": ["Proactively surfaces trade-offs before being asked", "Quantifies impact with specific numbers"],
-    "growth_areas": ["Could strengthen cross-functional stakeholder narrative"],
-    "top_priority_fix": "Add explicit stakeholder alignment steps to behavioral answers."
-  }
+  ]
 }
+`.trim();
 
---- Example 2: No Hire (TECHNICAL_DEPTH 2, COMMUNICATION_SNR 2) ---
+const SYNTHESIS_EXAMPLE = `
+[EXAMPLE — No Hire case (TECHNICAL_DEPTH 2, COMMUNICATION_SNR 2 from Call 1's scoring); follow this exact JSON structure and register]
 {
   "summary": {
-    "recommendation": "No Hire",
-    "hire_probability": 0,
     "overall_impression": "I never got past surface-level descriptions — every time I pushed for how or why, I got restated context instead of a decision. I can't verify real understanding from this transcript, and that's a no."
   },
-  "metrics": {
-    "talk_to_listen_ratio": "81/19",
-    "avg_response_latency_sec": 2.0,
-    "signal_to_noise_ratio": 0.06,
-    "interruption_count": 0
-  },
-  "skill_analysis": [
-    {
-      "parameter_id": "TECHNICAL_DEPTH",
-      "rating": 2,
-      "reasoning": "Candidate named technologies but could not explain how they worked or why they were chosen over alternatives.",
-      "evidence_quotes": [
-        "We used Kubernetes because it's the industry standard and everyone uses it these days",
-        "I worked with microservices — it's basically just breaking things into smaller services, which is good for scalability"
-      ]
-    },
-    {
-      "parameter_id": "COMMUNICATION_SNR",
-      "rating": 2,
-      "reasoning": "Answers were long and circular with no clear structure. Core point was buried in repetitive restating.",
-      "evidence_quotes": [
-        "So basically what happened was, we had this issue, and the issue was kind of like a problem with the system, and we needed to fix it, so we fixed it",
-        "I think, you know, generally speaking, communication is important and I always try to communicate well with my team"
-      ]
-    }
-  ],
-  "question_walkthrough": [
-    {
-      "question_number": 1,
-      "key_takeaway": "Named Kubernetes and microservices but justified the choice with 'industry standard' rather than a reason tied to the system's actual constraints — an interviewer hears this as pattern-matching on buzzwords, not engineering judgment, which is why this sets a low ceiling before the interview has really started.",
-      "signal_ids": ["TECHNICAL_DEPTH"]
-    }
-  ],
   "priority_risks": [
     {
       "title": "Evidence gap",
@@ -482,14 +439,6 @@ const FEW_SHOT_EXAMPLES = `
       "why_it_hurt": "This reads as pattern-matching on a buzzword rather than a decision tied to an actual constraint, which is what an interviewer is listening for.",
       "framework": "Answer → Reasoning → Trade-off",
       "model_excerpt": "We moved to Kubernetes specifically because our deploy cadence was blocked on manual VM provisioning — it was taking us 40 minutes per release. K8s let us define declarative deployments and roll back in under a minute. The trade-off was operational complexity: we had to invest two weeks in on-call runbooks before it paid off."
-    },
-    {
-      "question_number": 2,
-      "parameter_id": "COMMUNICATION_SNR",
-      "your_quote": "So basically what happened was, we had this issue, and the issue was kind of like a problem with the system, and we needed to fix it, so we fixed it",
-      "why_it_hurt": "The interviewer has to wait through three restatements before learning what the actual problem or fix was — that reads as unprepared even if the underlying work was solid.",
-      "framework": "Answer → Evidence → Impact",
-      "model_excerpt": "Short answer: a bad cache invalidation was serving stale prices for up to 10 minutes. We fixed it by moving from TTL-based expiry to event-driven invalidation tied to the price-update queue, which cut staleness to under 5 seconds."
     }
   ],
   "path_to_next_tier": "One technically detailed answer — naming a real constraint and a trade-off, the way the model answer above does — would be enough to move Technical Depth off the floor and shift this from No Hire toward Borderline.",
@@ -505,8 +454,6 @@ const FEW_SHOT_EXAMPLES = `
     "top_priority_fix": "Practice structuring your stories with a clear situation, the action you took, and a specific result — with at least one metric per story."
   }
 }
-
-[END FEW-SHOT EXAMPLES — Strong Hire and No Hire anchor the extremes; use SIGNAL_ANCHORS above to calibrate everything in between, including Borderline cases.]
 `.trim();
 
 export interface DebriefResult {
@@ -514,14 +461,96 @@ export interface DebriefResult {
   usage: { input_tokens: number; output_tokens: number; model: string };
 }
 
+// Shared call+error-handling wrapper for both debrief calls — the 413/rate-
+// limit/bad-request mapping and finish_reason==='length' check apply
+// identically to either. label distinguishes the two in logs.
+async function runDebriefCompletion(
+  systemPrompt: string,
+  maxTokens: number,
+  label: "scoring" | "synthesis"
+): Promise<{ raw: string; usage: { input_tokens: number; output_tokens: number } }> {
+  const completion = await (async () => {
+    try {
+      return await getClient().chat.completions.create({
+        model: MODEL,
+        max_tokens: maxTokens,
+        // See generateNextQuestion — gpt-oss-120b's default 'medium' reasoning
+        // effort burns hidden reasoning tokens out of the same max_tokens budget.
+        reasoning_effort: "low",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: "Generate the structured JSON." },
+        ],
+      });
+    } catch (apiErr) {
+      // Confirmed in production: Groq returns HTTP 413 (not the 429 that
+      // Groq.RateLimitError maps to) when a single request's token need
+      // exceeds the account's tokens-per-minute (TPM) budget outright. That's
+      // a capacity ceiling on the account's current Groq tier, not a
+      // transient throttle — waiting and retrying will fail identically, so
+      // this must not get the generic "try again in a moment" message.
+      if (apiErr instanceof Groq.APIError && apiErr.status === 413) {
+        console.error(`[generateDebrief:${label}] Groq TPM capacity exceeded:`, apiErr.status, apiErr.error);
+        throw new Error("This interview's transcript is too large for the AI service's current capacity — please contact support.");
+      }
+      if (apiErr instanceof Groq.RateLimitError) {
+        console.error(`[generateDebrief:${label}] Groq rate limit:`, apiErr.status, apiErr.error);
+        throw new Error("The AI service is rate-limited right now — please wait a minute and try again.");
+      }
+      if (apiErr instanceof Groq.BadRequestError) {
+        console.error(`[generateDebrief:${label}] Groq rejected the request:`, apiErr.status, apiErr.error);
+        throw new Error("Your interview transcript was too long for the report to process — please contact support.");
+      }
+      if (apiErr instanceof Groq.APIError) {
+        console.error(`[generateDebrief:${label}] Groq API error:`, apiErr.status, apiErr.error);
+        throw new Error("The AI service returned an unexpected error — please try again in a moment.");
+      }
+      throw apiErr;
+    }
+  })();
+
+  const choice = completion.choices[0];
+  if (choice.finish_reason === "length") {
+    console.error(
+      `[generateDebrief:${label}] response truncated by max_tokens (${completion.usage?.completion_tokens} completion tokens used)`
+    );
+    throw new Error("The report generation ran out of room and was cut off — please try again.");
+  }
+
+  const raw = choice.message.content?.trim() ?? "";
+  return {
+    raw,
+    usage: {
+      input_tokens: completion.usage?.prompt_tokens ?? 0,
+      output_tokens: completion.usage?.completion_tokens ?? 0,
+    },
+  };
+}
+
+function parseDebriefJson<T>(raw: string, label: string): T {
+  const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+  try {
+    return JSON.parse(jsonStr) as T;
+  } catch (parseErr) {
+    console.error(`[generateDebrief:${label}] failed to parse LLM response as JSON:`, parseErr);
+    console.error(`[generateDebrief:${label}] raw response (first 2000 chars):`, raw.slice(0, 2000));
+    throw new Error("The report came back malformed — please try again.");
+  }
+}
+
+type CoreScoring = Pick<DebriefReport, "metrics" | "skill_analysis" | "question_walkthrough">;
+type Synthesis = Pick<
+  DebriefReport,
+  "priority_risks" | "model_answers" | "path_to_next_tier" | "behavioral_insights" | "actionable_feedback"
+> & { summary: { overall_impression: string } };
+
 export async function generateDebrief(
   session: SessionContext,
   qas: QAPair[]
 ): Promise<DebriefResult> {
   // Cap each answer the same way jd_content is already capped below — an
   // uncapped transcript (e.g. a long round with rambling answers) can push
-  // the system prompt past Groq's context/rate limits, especially stacked
-  // on top of FEW_SHOT_EXAMPLES and SIGNAL_ANCHORS below. 4000 chars is
+  // either call's prompt past Groq's context/rate limits. 4000 chars is
   // generous for a single spoken answer (roughly 700-800 words) while
   // bounding the worst case.
   const MAX_ANSWER_CHARS = 4000;
@@ -542,9 +571,7 @@ export async function generateDebrief(
     ? `\n[COMPANY CONTEXT]\n- Company stage: ${session.company_stage}\n- Calibrate your scoring accordingly: Seed/Series A companies prize ownership and breadth; Series B/Public companies prize depth, process, and scalability.\n`
     : "";
 
-  const systemPrompt = `You are a senior hiring panel evaluating a completed mock interview. Your job is to produce an evidence-first structured assessment using BARS (Behaviorally Anchored Rating Scales).
-
-Session details:
+  const sessionHeader = `Session details:
 - Role: ${session.role}
 - Company: ${session.company}
 - Round type: ${session.round_type}
@@ -554,9 +581,27 @@ Job Description (excerpt):
 ${session.jd_content.slice(0, 3000)}
 
 Interview Q&As (the complete transcript):
-${qaText}
+${qaText}`;
 
-${FEW_SHOT_EXAMPLES}
+  // Synthesis doesn't need the JD text again — role/company/round_type plus
+  // the transcript (for fresh quotes) and Call 1's scoring already give it
+  // enough domain grounding, and the JD excerpt is the single largest
+  // reusable chunk of sessionHeader worth not paying for twice.
+  const synthesisHeader = `Session details:
+- Role: ${session.role}
+- Company: ${session.company}
+- Round type: ${session.round_type}
+- Years of experience: ${session.yoe}
+${backgroundLine}${companyContextBlock}
+Interview Q&As (the complete transcript):
+${qaText}`;
+
+  // ── Call 1: raw scoring — evidence read directly off the transcript ──────
+  const scoringPrompt = `You are a senior hiring panel evaluating a completed mock interview. Your job is to produce an evidence-first structured assessment using BARS (Behaviorally Anchored Rating Scales).
+
+${sessionHeader}
+
+${CORE_SCORING_EXAMPLE}
 
 --- SCORING RUBRIC ---
 Score each signal 1-5 using these anchors:
@@ -564,24 +609,13 @@ ${SIGNAL_ANCHORS}
 
 --- INSTRUCTIONS ---
 1. For EVERY signal in skill_analysis, provide at least 2 verbatim quotes from the candidate's answers as evidence_quotes. Copy word-for-word from the transcript above — do not paraphrase.
-2. Set hire_probability to 0 (this will be computed deterministically by the system).
-3. For metrics, estimate talk_to_listen_ratio based on relative answer lengths, signal_to_noise_ratio based on how much actionable content vs. filler was present, and set avg_response_latency_sec to 2.0 and interruption_count to 0 (defaults — not measurable from text). signal_to_noise_ratio measures DENSITY of substance in the words used — a different thing from whether those words were well-organized (that's COMMUNICATION_SNR / STAR_ALIGNMENT below). A candidate can have dense, substantive content that is nonetheless poorly structured. If your signal_to_noise_ratio is high but COMMUNICATION_SNR or STAR_ALIGNMENT is rated <=3 (or vice versa), you MUST reconcile that explicitly in the relevant reasoning text (e.g. "dense with real content, but that content wasn't organized — buried the point three sentences in") — never let the metric and the rating silently contradict each other.
-4. overall_impression must be written in first person, in the interviewer's own voice, as the verdict they'd actually report back to a hiring committee — a conclusion ("I'd fast-track this one" / "that's a no" / "I'd want a second opinion"), not a third-person summary of topics covered. This is the one thing a busy interviewer would say out loud if asked "so, how'd it go?" — see the few-shot examples above for the exact register.
-5. Every skill_analysis[].reasoning must do two things, not one: describe what the candidate actually did (the behavior), AND state what that signals to a real interviewer and how it would affect the hire decision. "Explained the caching layer clearly" is not enough — say what that clarity implies (e.g. "which is the kind of clarity that shortens a technical debrief and builds confidence fast"). A reasoning string that only describes behavior without stating its interview consequence is incomplete.
-6. Populate question_walkthrough with one entry per answered question, in question_number order. Each key_takeaway must name what happened in that specific answer AND its hire-decision implication (same two-part requirement as #5) in 1-2 sentences — this is a walkthrough of the interview, not a restatement of skill_analysis. Reference 1-3 signal_ids per entry (from the 8 parameter_ids) that this question's answer produced the clearest evidence for.
-7. Populate priority_risks with 2-3 entries — root causes, not a re-listing of every weak signal. Look across all 8 skill_analysis ratings for the pattern underneath them: e.g. "makes claims without evidence" might explain low TECHNICAL_DEPTH, PROBLEM_SOLVING, and RESULT_ORIENTATION all at once. Every signal rated <=3 must be explained by at least one priority_risk's related_signal_ids — if you can't fit a weak signal under one of your 2-3 risks, your risks are too narrow; broaden or merge them. If every signal rated 4+, priority_risks may be empty or name what's still worth sharpening.
-8. Populate model_answers. If priority_risks is non-empty, model_answers MUST also be non-empty — at least 1 entry, ideally one per priority_risk, up to 3 total. Only return an empty array when priority_risks is ALSO empty (every signal rated 4+) — never skip this field just because filling it out is demanding; an empty array is a claim that nothing needs fixing, and if you've named a priority_risk that claim is false. Each entry needs: your_quote (a real quote from the candidate's answer to that specific question — take it directly from the transcript, verbatim, no paraphrasing — it does not need to be identical to a string already used in evidence_quotes, just genuinely from the transcript), why_it_hurt (one sentence: what the interviewer likely concluded from THAT SPECIFIC quote, not generic advice), framework (must be exactly one of these three names: "Answer → Evidence → Impact", "Situation → Action → Result", or "Answer → Reasoning → Trade-off" — pick whichever fits the question type), and model_excerpt (a concrete, plausible 2-4 sentence answer to THAT SPECIFIC question using that framework, grounded in the candidate's own domain/role, not a generic template).
-9. Set path_to_next_tier to one sentence: the SPECIFIC evidence that, if it had appeared in the transcript, would most likely move the recommendation up one tier (e.g. Borderline -> Hire). Ground it in what's actually missing from THIS transcript — "prepare more examples" is not acceptable, name the specific kind of evidence (e.g. "one technically detailed answer with a quantified outcome, on par with the acquisition story in Q3").
-10. Set behavioral_insights.confidence_rationale to one sentence explaining WHY confidence is at that level, tied to something concrete about the session — answer count, topic coverage, or consistency (e.g. "based on 7 substantive answers; technical-depth confidence is lower because few platform-specific questions came up").
-11. Return raw JSON only — no markdown, no code blocks.
+2. For metrics, estimate talk_to_listen_ratio based on relative answer lengths, signal_to_noise_ratio based on how much actionable content vs. filler was present, and set avg_response_latency_sec to 2.0 and interruption_count to 0 (defaults — not measurable from text). signal_to_noise_ratio measures DENSITY of substance in the words used — a different thing from whether those words were well-organized (that's COMMUNICATION_SNR / STAR_ALIGNMENT below). A candidate can have dense, substantive content that is nonetheless poorly structured. If your signal_to_noise_ratio is high but COMMUNICATION_SNR or STAR_ALIGNMENT is rated <=3 (or vice versa), you MUST reconcile that explicitly in the relevant reasoning text (e.g. "dense with real content, but that content wasn't organized — buried the point three sentences in") — never let the metric and the rating silently contradict each other.
+3. Every skill_analysis[].reasoning must do two things, not one: describe what the candidate actually did (the behavior), AND state what that signals to a real interviewer and how it would affect the hire decision. "Explained the caching layer clearly" is not enough — say what that clarity implies (e.g. "which is the kind of clarity that shortens a technical debrief and builds confidence fast"). A reasoning string that only describes behavior without stating its interview consequence is incomplete.
+4. Populate question_walkthrough with one entry per answered question, in question_number order. Each key_takeaway must name what happened in that specific answer AND its hire-decision implication (same two-part requirement as #3) in 1-2 sentences. Reference 1-3 signal_ids per entry (from the 8 parameter_ids) that this question's answer produced the clearest evidence for.
+5. Return raw JSON only — no markdown, no code blocks.
 
 Return this exact structure:
 {
-  "summary": {
-    "recommendation": "Strong Hire" | "Hire" | "Borderline" | "No Hire",
-    "hire_probability": 0,
-    "overall_impression": "1-2 sentences, first person, in the interviewer's voice — the verdict, not a topic summary."
-  },
   "metrics": {
     "talk_to_listen_ratio": "e.g. 72/28",
     "avg_response_latency_sec": 2.0,
@@ -602,7 +636,52 @@ Return this exact structure:
       "key_takeaway": "What happened in this answer and its hire-decision implication, 1-2 sentences.",
       "signal_ids": ["TECHNICAL_DEPTH"]
     }
-  ],
+  ]
+}
+
+Include all 8 signals in skill_analysis in this order: TECHNICAL_DEPTH, PROBLEM_SOLVING, STAR_ALIGNMENT, COMMUNICATION_SNR, RESULT_ORIENTATION, OWNERSHIP_ETHICS, ADAPTABILITY_GROWTH, EDGE_CASE_MASTERY.`;
+
+  const scoringResult = await runDebriefCompletion(
+    scoringPrompt,
+    // Measured against a realistic 8-signal + 8-question_walkthrough JSON
+    // payload: ~1600 tokens actually needed. 2500 leaves a real margin
+    // without repeating the old mistake of reserving far more than the
+    // output will ever use — on an 8000 TPM tier, every reserved token not
+    // actually used is TPM budget taken away from the (variable-length,
+    // unavoidable) transcript.
+    2500,
+    "scoring"
+  );
+  const scoring = parseDebriefJson<CoreScoring>(scoringResult.raw, "scoring");
+  if (!Array.isArray(scoring.skill_analysis) || scoring.skill_analysis.length === 0) {
+    console.error("[generateDebrief:scoring] response parsed but missing skill_analysis:", JSON.stringify(scoring).slice(0, 2000));
+    throw new Error("The report came back incomplete — please try again.");
+  }
+  scoring.question_walkthrough = scoring.question_walkthrough ?? [];
+
+  // ── Call 2: synthesis — reasons about Call 1's scoring, not just the transcript ──
+  const synthesisPrompt = `You are the same senior hiring panel, now synthesizing your own scoring below into the parts of the report that reason about root causes and next steps — not re-scoring.
+
+${synthesisHeader}
+
+--- YOUR SCORING FROM STEP 1 (ground everything below in this) ---
+${JSON.stringify({ skill_analysis: scoring.skill_analysis, question_walkthrough: scoring.question_walkthrough })}
+
+${SYNTHESIS_EXAMPLE}
+
+--- INSTRUCTIONS ---
+1. summary.overall_impression must be written in first person, in the interviewer's own voice, as the verdict they'd actually report back to a hiring committee — a conclusion ("I'd fast-track this one" / "that's a no" / "I'd want a second opinion"), not a third-person summary of topics covered. This is the one thing a busy interviewer would say out loud if asked "so, how'd it go?" — see the example above for the exact register.
+2. Populate priority_risks with 2-3 entries — root causes, not a re-listing of every weak signal above. Look across all 8 skill_analysis ratings for the pattern underneath them: e.g. "makes claims without evidence" might explain low TECHNICAL_DEPTH, PROBLEM_SOLVING, and RESULT_ORIENTATION all at once. Every signal rated <=3 must be explained by at least one priority_risk's related_signal_ids — if you can't fit a weak signal under one of your 2-3 risks, your risks are too narrow; broaden or merge them. If every signal rated 4+, priority_risks may be empty or name what's still worth sharpening.
+3. Populate model_answers. If priority_risks is non-empty, model_answers MUST also be non-empty — at least 1 entry, ideally one per priority_risk, up to 3 total. Only return an empty array when priority_risks is ALSO empty (every signal rated 4+) — never skip this field just because filling it out is demanding; an empty array is a claim that nothing needs fixing, and if you've named a priority_risk that claim is false. Each entry needs: your_quote (a real quote from the candidate's answer to that specific question — take it directly from the transcript above, verbatim, no paraphrasing — it does not need to already appear in the scoring above, just genuinely be from the transcript), why_it_hurt (one sentence: what the interviewer likely concluded from THAT SPECIFIC quote, not generic advice), framework (must be exactly one of these three names: "Answer → Evidence → Impact", "Situation → Action → Result", or "Answer → Reasoning → Trade-off" — pick whichever fits the question type), and model_excerpt (a concrete, plausible 2-4 sentence answer to THAT SPECIFIC question using that framework, grounded in the candidate's own domain/role, not a generic template).
+4. Set path_to_next_tier to one sentence: the SPECIFIC evidence that, if it had appeared in the transcript, would most likely move the recommendation up one tier (e.g. Borderline -> Hire). Ground it in what's actually missing from THIS transcript — "prepare more examples" is not acceptable, name the specific kind of evidence (e.g. "one technically detailed answer with a quantified outcome, on par with the acquisition story in Q3").
+5. Set behavioral_insights.confidence_rationale to one sentence explaining WHY confidence is at that level, tied to something concrete about the session — answer count, topic coverage, or consistency (e.g. "based on 7 substantive answers; technical-depth confidence is lower because few platform-specific questions came up").
+6. Return raw JSON only — no markdown, no code blocks.
+
+Return this exact structure:
+{
+  "summary": {
+    "overall_impression": "1-2 sentences, first person, in the interviewer's voice — the verdict, not a topic summary."
+  },
   "priority_risks": [
     {
       "title": "Short root-cause name, 2-4 words",
@@ -614,7 +693,7 @@ Return this exact structure:
     {
       "question_number": 1,
       "parameter_id": "TECHNICAL_DEPTH",
-      "your_quote": "Verbatim quote copied word-for-word from evidence_quotes.",
+      "your_quote": "Verbatim quote from the transcript above.",
       "why_it_hurt": "One sentence: what the interviewer likely concluded from that exact quote.",
       "framework": "Answer → Evidence → Impact" | "Situation → Action → Result" | "Answer → Reasoning → Trade-off",
       "model_excerpt": "A concrete stronger answer to that exact question, 2-4 sentences."
@@ -632,91 +711,43 @@ Return this exact structure:
     "growth_areas": ["2-3 specific areas to improve"],
     "top_priority_fix": "The single most important thing to work on."
   }
-}
+}`;
 
-Include all 8 signals in skill_analysis in this order: TECHNICAL_DEPTH, PROBLEM_SOLVING, STAR_ALIGNMENT, COMMUNICATION_SNR, RESULT_ORIENTATION, OWNERSHIP_ETHICS, ADAPTABILITY_GROWTH, EDGE_CASE_MASTERY.`;
-
-  const completion = await (async () => {
-    try {
-      return await getClient().chat.completions.create({
-        model: MODEL,
-        // gpt-oss-120b supports up to 32K output tokens on Groq. The schema grew
-        // substantially after this was first set to 7000 (question_walkthrough,
-        // priority_risks, model_answers, path_to_next_tier all added later) —
-        // an 8-question round's full report can plausibly exceed that, silently
-        // truncating the JSON with no error until JSON.parse throws below.
-        max_tokens: 12000,
-        // See generateNextQuestion — gpt-oss-120b's default 'medium' reasoning
-        // effort burns hidden reasoning tokens out of the same max_tokens budget.
-        // The debrief output is long and structured; keep the budget for visible
-        // JSON, not hidden reasoning.
-        reasoning_effort: "low",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: "Generate the structured debrief report." },
-        ],
-      });
-    } catch (apiErr) {
-      // Previously an uncaught Groq.APIError (rate limit, context-length
-      // rejection, etc.) propagated straight to the route's generic catch,
-      // which deliberately hides the real cause from the client — so a
-      // deterministic, content-triggered failure (e.g. a long/verbose
-      // transcript pushing the request over a token or rate limit) looked
-      // identical to a one-off glitch and "Try again" always failed the same
-      // way with zero diagnosis. Log the real status/body here so it's
-      // visible server-side, and surface a message the client is actually
-      // allowed to show that at least tells the user whether retrying makes
-      // sense.
-      // Confirmed in production: Groq returns HTTP 413 (not the 429 that
-      // Groq.RateLimitError maps to) when a single request's token need
-      // exceeds the account's tokens-per-minute (TPM) budget outright — e.g.
-      // "Limit 8000, Requested 9346". That's a capacity ceiling on the
-      // account's current Groq tier, not a transient throttle: waiting and
-      // retrying the same transcript will fail identically every time, so
-      // this must not get the generic "try again in a moment" message.
-      if (apiErr instanceof Groq.APIError && apiErr.status === 413) {
-        console.error("[generateDebrief] Groq TPM capacity exceeded:", apiErr.status, apiErr.error);
-        throw new Error("This interview's transcript is too large for the AI service's current capacity — please contact support.");
-      }
-      if (apiErr instanceof Groq.RateLimitError) {
-        console.error("[generateDebrief] Groq rate limit:", apiErr.status, apiErr.error);
-        throw new Error("The AI service is rate-limited right now — please wait a minute and try again.");
-      }
-      if (apiErr instanceof Groq.BadRequestError) {
-        console.error("[generateDebrief] Groq rejected the request:", apiErr.status, apiErr.error);
-        throw new Error("Your interview transcript was too long for the report to process — please contact support.");
-      }
-      if (apiErr instanceof Groq.APIError) {
-        console.error("[generateDebrief] Groq API error:", apiErr.status, apiErr.error);
-        throw new Error("The AI service returned an unexpected error — please try again in a moment.");
-      }
-      throw apiErr;
-    }
-  })();
-
-  const choice = completion.choices[0];
-  if (choice.finish_reason === "length") {
-    console.error(
-      `[generateDebrief] response truncated by max_tokens (${completion.usage?.completion_tokens} completion tokens used)`
-    );
-    throw new Error("The report generation ran out of room and was cut off — please try again.");
-  }
-
-  const raw = choice.message.content?.trim() ?? "";
-  // Strip markdown code block if present
-  const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
-  let report: DebriefReport;
-  try {
-    report = JSON.parse(jsonStr) as DebriefReport;
-  } catch (parseErr) {
-    console.error("[generateDebrief] failed to parse LLM response as JSON:", parseErr);
-    console.error("[generateDebrief] raw response (first 2000 chars):", raw.slice(0, 2000));
-    throw new Error("The report came back malformed — please try again.");
-  }
-  if (!report.summary || !Array.isArray(report.skill_analysis) || report.skill_analysis.length === 0) {
-    console.error("[generateDebrief] response parsed but missing required fields:", JSON.stringify(report).slice(0, 2000));
+  const synthesisResult = await runDebriefCompletion(
+    synthesisPrompt,
+    // Measured against a realistic 3-risk + 3-model_answer payload (the
+    // heaviest realistic case — model_excerpt is the single biggest field):
+    // ~850 tokens actually needed. 1800 leaves real margin without
+    // over-reserving — same reasoning as the scoring call's max_tokens.
+    1800,
+    "synthesis"
+  );
+  const synthesis = parseDebriefJson<Synthesis>(synthesisResult.raw, "synthesis");
+  if (!synthesis.summary || !synthesis.behavioral_insights) {
+    console.error("[generateDebrief:synthesis] response parsed but missing required fields:", JSON.stringify(synthesis).slice(0, 2000));
     throw new Error("The report came back incomplete — please try again.");
   }
+
+  // ── Merge into the shape the route/UI expect — unchanged from before ─────
+  const report: DebriefReport = {
+    summary: {
+      // recommendation/hire_probability are always overwritten downstream by
+      // calculateNormalizedScore() (deterministic, evidence-first) before
+      // this ever reaches a client — this placeholder is never read.
+      recommendation: "Borderline",
+      hire_probability: 0,
+      overall_impression: synthesis.summary.overall_impression,
+    },
+    metrics: scoring.metrics,
+    skill_analysis: scoring.skill_analysis,
+    question_walkthrough: scoring.question_walkthrough,
+    priority_risks: synthesis.priority_risks,
+    model_answers: synthesis.model_answers,
+    path_to_next_tier: synthesis.path_to_next_tier,
+    behavioral_insights: synthesis.behavioral_insights,
+    actionable_feedback: synthesis.actionable_feedback,
+  };
+
   // Defensive defaults — the LLM occasionally omits a field despite instructions;
   // downstream rendering should degrade gracefully, not crash.
   report.question_walkthrough = report.question_walkthrough ?? [];
@@ -726,7 +757,7 @@ Include all 8 signals in skill_analysis in this order: TECHNICAL_DEPTH, PROBLEM_
   if (report.behavioral_insights) {
     report.behavioral_insights.confidence_rationale = report.behavioral_insights.confidence_rationale ?? "";
   }
-  // Instruction #8 requires model_answers to be non-empty whenever
+  // Instruction #3 (synthesis) requires model_answers to be non-empty whenever
   // priority_risks is non-empty — if the model didn't follow that, it's a
   // real prompt-compliance gap worth knowing about rather than a silent
   // empty section. Logged, not enforced: better to show nothing than to
@@ -738,8 +769,8 @@ Include all 8 signals in skill_analysis in this order: TECHNICAL_DEPTH, PROBLEM_
   }
 
   const usage = {
-    input_tokens: completion.usage?.prompt_tokens ?? 0,
-    output_tokens: completion.usage?.completion_tokens ?? 0,
+    input_tokens: scoringResult.usage.input_tokens + synthesisResult.usage.input_tokens,
+    output_tokens: scoringResult.usage.output_tokens + synthesisResult.usage.output_tokens,
     model: MODEL,
   };
 
