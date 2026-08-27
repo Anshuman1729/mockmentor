@@ -139,9 +139,15 @@ export async function POST(req: NextRequest) {
     // applyFatalFlag never touches overall_impression — that field is user-facing
     // (rendered as the interviewer's first-person verdict quote) and must never
     // carry an internal bracketed marker prefix.
+    // Math.max guard: for every current-UI session the completeness gate
+    // above already guarantees qas.length >= totalQuestions (generation
+    // stops exactly at totalQuestions), so this is a no-op in that path. It
+    // only protects a legacy row that happens to hold more QA pairs than
+    // the newly-resolved totalQuestions from being scored against a
+    // too-small denominator and getting an inflated (and wrong) skip rate.
     const fatalFlag = checkFatalFlag(
       qas.map((qa) => ({ question_number: qa.question_number, answer: qa.answer })),
-      totalQuestions
+      Math.max(totalQuestions, qas.length)
     );
     const fatalFlagResult = applyFatalFlag(
       hireProbability,
