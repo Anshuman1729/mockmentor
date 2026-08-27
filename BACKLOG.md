@@ -405,3 +405,68 @@ debrief through the actual production pipeline.
 - Shareable debrief card (LinkedIn/WhatsApp)
 - Resume alignment scoring (Deep Dive tier)
 - PDF report export (Deep Dive tier)
+
+---
+
+## 📋 Vendor Independence / Reduce Single-LLM Dependency (Discussion 2026-08-27, not started)
+
+Surfaced from a strategic question, not a bug report: how exposed is PrepSignals to Groq specifically,
+and what's the highest-leverage way to reduce that exposure without diluting the actual moat (the
+deterministic scorer + calibration data, not the LLM calls themselves).
+
+- **Provider abstraction layer** — `lib/groq.ts` calls the Groq SDK directly wherever it's used. Wrap it
+  behind an interface (`generateCompletion(prompt, schema) → JSON`) with Groq as one implementation, so
+  OpenRouter/Together/a self-hosted vLLM endpoint can be added without touching callers. Buys failover on
+  a Groq outage mid-interview, pricing leverage, and the option to route cheap/high-volume calls (preview
+  analysis, question generation) to a smaller model while reserving a stronger one for debrief generation.
+- **Reduce call volume before reducing vendor lock-in** — bigger lever than swapping providers.
+  Question generation already partially does this (`question_bank` seed-matching adapts a seed rather
+  than inventing from scratch). Could go further: embedding similarity search over `question_bank` to
+  pick + lightly template a chunk of questions with zero LLM call, reserving the LLM for open-ended
+  answer evaluation and debrief prose where generation is genuinely unavoidable.
+- **Known tradeoff, don't build preemptively**: multi-provider support and any self-hosted/open-weight
+  fallback add real ops surface — different models format nested JSON (`question_walkthrough`,
+  `priority_risks`) with meaningfully different reliability, and gpt-oss's `reasoning_effort` knob has no
+  equivalent on other providers. Worth building once Groq reliability/cost is an actual observed problem,
+  not ahead of that.
+- **Complexity**: M (abstraction layer) / L (reducing call volume via retrieval) | **Status**: Discussed, not scoped into a plan or branch.
+
+---
+
+## 📋 Question-Generation Data Flywheel — Readiness Check (Discussion 2026-08-27, not started)
+
+User question: with free-tier interview volume ramping, are we positioned to use that data to make
+question generation better over time? Audited what actually exists vs. what "training" would require.
+
+- **What's real today**: `calibration_loops` (`ai_score` + `llm_reasoning` inserted per debrief in
+  `app/api/interview/debrief/route.ts`, backfilled with `actual_outcome`/`discrepancy_score` by
+  `POST /api/sessions/[sessionId]/outcome`) is a working scored-prediction-vs-real-outcome dataset — the
+  actual ingredient for "getting better," not just interview logs. `qa_pairs.seed_question_id` is wired
+  end-to-end (written in `app/api/interview/question/route.ts`, read back in both the question and
+  debrief routes) — every question can already be traced back to its `question_bank` seed.
+- **What "training the LLM" can't mean here**: Groq is an inference API — there's no fine-tuning endpoint
+  for `openai/gpt-oss-120b` to send this data to. "The LLM gets better with time" via Groq specifically
+  isn't on the table without a self-hosted/open-weight model (see the vendor-independence item above),
+  which is a materially bigger undertaking than anything below.
+- **What's realistically buildable without owning model weights**:
+  1. Use `calibration_loops.discrepancy_score` to find where the AI score and real outcome diverge most,
+     and mine those sessions' `llm_reasoning` for few-shot examples to add to `FEW_SHOT_EXAMPLES` in
+     `lib/groq.ts` — same mechanism already in place, better-curated over time instead of the current 3
+     fixed examples.
+  2. Feed `seed_question_id` outcome data back into `question_bank` — e.g. a `times_used` /
+     `avg_discrepancy` column so seed selection can start preferring seeds that historically produced
+     well-calibrated sessions over ones that didn't. This is closer to a recommender-system improvement
+     than "training an LLM," but it's the part of "questions get better" actually reachable today.
+  3. Only past that: self-hosting an open-weight model and fine-tuning it on accumulated
+     transcript+outcome pairs. Real option, but assumes the vendor-independence work above as a
+     prerequisite (need inference infra either way), plus enough volume that fine-tuning data isn't sparse.
+- **Blocker that exists regardless of technical readiness — flagging, not solving**: there is currently
+  no consent/ToS language anywhere in the codebase (checked — no `consent`/`privacy policy`/`opt-out`
+  hits outside `BACKLOG.md`'s own note about the Mixpanel EU/CA decision) covering "we may use your
+  interview answers to improve the product/model." Free users' spoken answers, resumes, and JD text are
+  sensitive enough (career info, personal background) that shipping any of the 3 items above — even the
+  non-model-weight ones — without disclosure first is a real liability/trust risk, independent of the
+  hire_probability-exposure rule already in CLAUDE.md. Needs explicit user sign-off before scoping this
+  further, not a default-on assumption.
+- **Complexity**: S (item 1) / M (item 2) / XL (item 3, org-level commitment) | **Status**: Audited, not
+  scoped into a plan or branch. Consent/ToS gap is the actual blocker on items 1-2 as much as engineering effort.
