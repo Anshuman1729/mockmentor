@@ -5,7 +5,7 @@ import { sql } from "@/lib/db";
 import { generateDebrief } from "@/lib/groq";
 import { sendDebriefEmail } from "@/lib/email";
 import { calculateNormalizedScore } from "@/lib/rubric-researched";
-import { checkFatalFlag } from "@/lib/fatal-flag";
+import { checkFatalFlag, applyFatalFlag } from "@/lib/fatal-flag";
 import { track, stableInsertId } from "@/lib/analytics";
 
 export async function POST(req: NextRequest) {
@@ -33,7 +33,11 @@ export async function POST(req: NextRequest) {
     // Check if debrief already exists
     const existing = await sql`SELECT * FROM debriefs WHERE session_id = ${sessionId}`;
     if (existing.length > 0) {
-      return NextResponse.json({ debrief: existing[0] });
+      // Deliberate: never return the full row — debrief_data.summary.hire_probability
+      // and the internal reasoning column must never reach the client. See the
+      // non-negotiable rule against exposing hire_probability/BARS internals.
+      const { id, session_id, created_at } = existing[0];
+      return NextResponse.json({ debrief: { id, session_id, created_at } });
     }
 
     const qas = await sql`
@@ -145,18 +149,21 @@ export async function POST(req: NextRequest) {
       hireProbability >= 45 ? "Borderline" : "No Hire";
     debrief.summary.recommendation = recommendation as typeof debrief.summary.recommendation;
 
-    // Fix B: Fatal flag — >30% zero-signal → force No Hire, cap hire_probability ≤30
+    // Fix B: Fatal flag — >30% zero-signal → force No Hire, cap hire_probability ≤30.
+    // applyFatalFlag never touches overall_impression — that field is user-facing
+    // (rendered as the interviewer's first-person verdict quote) and must never
+    // carry an internal bracketed marker prefix.
     const fatalFlag = checkFatalFlag(
       qas.map((qa) => ({ question_number: qa.question_number, answer: qa.answer })),
       totalQuestions
     );
-    if (fatalFlag.triggered) {
-      hireProbability = Math.min(hireProbability, 30);
-      debrief.summary.recommendation = "No Hire";
-      debrief.summary.overall_impression =
-        `[FATAL FLAG] ${Math.round(fatalFlag.skipRate * 100)}% of questions received zero-signal responses. ` +
-        debrief.summary.overall_impression;
-    }
+    const fatalFlagResult = applyFatalFlag(
+      hireProbability,
+      debrief.summary.recommendation,
+      fatalFlag
+    );
+    hireProbability = fatalFlagResult.hireProbability;
+    debrief.summary.recommendation = fatalFlagResult.recommendation;
 
     // Inject computed values (overwrite LLM placeholders)
     debrief.summary.hire_probability = hireProbability;
@@ -174,11 +181,14 @@ export async function POST(req: NextRequest) {
     }
     debrief.metrics.candidate_questions_asked = session.candidate_questions_asked ?? 0;
 
-    // Extract reasoning for shadow scoring (stored separately, not in user-facing debrief_data)
-    const reasoning = debrief.skill_analysis.map((s) => ({
+    // Extract reasoning for shadow scoring (stored separately, not in user-facing debrief_data).
+    // NOTE: older rows in this JSONB column are a bare array (just `signals`) —
+    // any future reader of debriefs.reasoning must handle both shapes.
+    const signalReasoning = debrief.skill_analysis.map((s) => ({
       parameter_id: s.parameter_id,
       reasoning: s.reasoning,
     }));
+    const reasoning = { signals: signalReasoning, fatal_flag: fatalFlagResult.internalNote };
 
     const inserted = await sql`
       INSERT INTO debriefs (session_id, debrief_data, reasoning, tokens_used)
@@ -234,7 +244,11 @@ export async function POST(req: NextRequest) {
       debrief
     );
 
-    return NextResponse.json({ debrief: inserted[0] });
+    // Deliberate: never return the full row — debrief_data.summary.hire_probability
+    // and the internal reasoning column must never reach the client. See the
+    // non-negotiable rule against exposing hire_probability/BARS internals.
+    const { id, session_id, created_at } = inserted[0];
+    return NextResponse.json({ debrief: { id, session_id, created_at } });
   } catch (err) {
     console.error("[POST /api/interview/debrief]", err);
     // Only ever surface our own known-safe, user-facing retry messages from
