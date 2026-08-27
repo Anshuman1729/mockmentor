@@ -233,6 +233,66 @@ Playwright and reporting back real UX friction — not just self-review.
 - **Live delivery confirmed** (2026-08-26, post-merge via PR #26): first production test hit a stale deployment still on the pre-merge `main` build (session created fine, 200 OK, but no `track()` call existed in that code — confirmed via a Vercel log export, not a guess). After merging #26 and redeploying, a fresh interview session registered a real user/event in Mixpanel. The gap between "code is correct" and "event actually lands" — the thing this whole sub-thread was about — is now closed for real, not just by design.
 - **Status**: Done. `session_started` verified live. `session_completed`/`drill_used` still need one real pass each (finish an interview; use the drill/retry feature) to confirm the same, but there's no reason to expect them to behave differently — same `track()` path. Unblocks the item below; a baseline run (`npm run analytics:baseline`) is the next actionable step whenever the rings/referral feature is picked back up.
 
+### End-to-End Acquisition Funnel (2026-08-27) — landing visit → session start
+Direct ask, after the engagement-loop work above was set aside: build the real funnel from anonymous
+landing-page visit through to whatever the current real end-point is (purchase doesn't exist yet — no
+payment gateway, no pricing decided — so the funnel stops at interview completion for now).
+
+- **Architecture change**: the three events above were all server-side/post-auth. Anonymous visitors
+  never hit an authenticated API route, so genuine top-of-funnel data requires the **Mixpanel browser
+  SDK** (`mixpanel-browser`) for the first time — added as `lib/analytics-client.ts` (same lazy-init/
+  fail-open/omit-null philosophy as the server wrapper) plus `components/MixpanelProvider.tsx`, mounted
+  in `app/layout.tsx` next to `<Analytics />`. Session Replay explicitly disabled at init
+  (`record_sessions_percent: 0`, `autocapture: false`) — enforces the considered-and-declined decision
+  above in code, not just in this doc. `NEXT_PUBLIC_MIXPANEL_TOKEN` added to `.env.local` (same public
+  project token as the server var — safe to expose client-side by design, per Mixpanel's own docs).
+- **Identity linking**: `MixpanelProvider` calls `identify(clerkUserId)` on every page load where a user
+  is signed in (not just at first signup) — otherwise client events during a normal already-signed-in
+  visit would stay on an anonymous device id. The signup-flow resume effect in `SetupForm.tsx` also
+  calls `identify()` directly (cheap, idempotent) immediately before firing the conversion event, to
+  remove any doubt about effect-ordering on the exact redirect-return render.
+- **Funnel events, in order**:
+  1. `landing_page_viewed` — `components/LandingPageView.tsx`, fire-once on mount
+  2. `cta_clicked` (`{ cta_location: top_nav | hero | bottom | preview_post_reveal }`) — one event +
+     property rather than 4 near-identical event names, via new `components/TrackedCta.tsx`
+  3. `basics_submit`, `personalisation_submit` — per-wizard-step, fired in `SetupForm.tsx`'s
+     `handleContinue()` (step key-driven, not magic step-number literals)
+  4. `jd_submit` (`{ auth_state: signed_in | signed_out }`) — final-step commit, both the direct-submit
+     path and the auth-redirect path
+  5. `sign_up_completed` / `sign_in_completed` — **not one event**: the resume effect reads back which
+     auth mode the visitor was sent to (new `PENDING_AUTH_MODE_KEY` sessionStorage key, set by
+     `startAuthRedirect`) so a returning user logging back in isn't miscounted as a fresh signup
+  6. `session_started`, `session_completed` — already existed; `session_completed` gained two new
+     properties this pass: `interview_depth` (= `totalQuestions`, reusing the debrief route's already-
+     normalized local variable rather than a fresh lookup) and `session_duration_sec`
+     (`session_completed` time − `sessions.created_at`)
+  7. *(Purchase)* — still not built, same as noted above
+- **Two real things this surfaced, not fixed as part of this pass**:
+  - `lib/email.ts`'s Resend client is instantiated eagerly at module load (unlike `lib/groq.ts`'s lazy
+    pattern) — `next build` fails outright without a real `RESEND_API_KEY` present. Found running a
+    verification build; out of scope for this task, but worth fixing given it's a real build-time
+    landmine for any environment/CI that doesn't already have that key set.
+  - `app/api/interview/question/route.ts` and `app/api/interview/debrief/route.ts` each carry their own
+    round-type-normalization map, and **they don't agree**: the debrief route treats old `"screening"`/
+    `"technical"` values as their own legacy round types (5 and 8 questions respectively), while the
+    question route folds both into `technical_screen` (5 questions) instead. Found while deciding where
+    to source `interview_depth` from — deliberately did *not* consolidate these into one shared helper,
+    since I don't know which behavior is intended for old in-flight sessions and didn't want to guess at
+    something with real Fatal-Flag-threshold implications. `interview_depth` sources only from the
+    debrief route's copy (the one already exercised in production), so this pass didn't change behavior
+    anywhere — just surfaced a pre-existing inconsistency.
+- **Open interpretation questions** (implemented my best reading, flagged for confirmation): "interview
+  depth" — read as question count per round (`totalQuestions`), not YOE/seniority, since
+  `technical_deep_dive` already uses "depth" in exactly this sense. "Interview time" and "interview
+  completion time" — read as the same ask (`session_duration_sec`, start-to-completion elapsed time),
+  not two separate properties, since a session can't be marked completed at all without every question
+  answered (the completeness gate blocks partial completion outright, so there's no separate
+  "completion rate" to track).
+- **Status**: Code complete — typecheck/lint/vitest all clean. **Not yet verified live** — same
+  "MIXPANEL_TOKEN added ≠ event confirmed in Live View" gap as before, now for six new client-side
+  events plus two new server-side properties. Needs a real click-through (visit → CTA → all 3 wizard
+  steps → sign-up → finish an interview) against a deployed build with `NEXT_PUBLIC_MIXPANEL_TOKEN` set.
+
 ### Feature: Rings / Referral / Help-Credit Loop (Discovery stage complete, paused here)
 Surfaced from a product-design discussion (2026-08-26): PrepSignals has no return mechanic today — one session, one debrief, nothing pulls the user back. Discussed and refined into a specific proposal, grounded in the `product-design-principles` skill's gamification research (Sailer et al. 2017 — engagement mechanics build autonomy/relatedness but not competence, which is the thing this product should actually build).
 

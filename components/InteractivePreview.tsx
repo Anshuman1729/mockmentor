@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Loader2 } from "lucide-react";
+import { trackClient } from "@/lib/analytics-client";
 
 const ACCENT = "#1f4d3a";
 const SAMPLE_QUESTION = "Tell me about a time you had to debug a critical issue under pressure.";
@@ -124,6 +125,7 @@ export default function InteractivePreview({ isSignedIn }: { isSignedIn: boolean
 
               <Link
                 href="/dashboard"
+                onClick={() => trackClient("cta_clicked", { cta_location: "preview_post_reveal" })}
                 className="landing-cta inline-flex items-center gap-2 rounded-full px-6 py-3.5 text-sm font-semibold text-white"
               >
                 {isSignedIn ? "Go to Dashboard" : "Start your real mock interview"}
