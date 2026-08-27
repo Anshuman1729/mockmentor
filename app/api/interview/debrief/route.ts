@@ -47,6 +47,10 @@ export async function POST(req: NextRequest) {
       behavioural: 7, final: 8, hr_screen: 5, case_study: 5,
       // legacy keys for old sessions
       screening: 5, technical: 8,
+      // Hidden 1-question test shortcut (app/api/dev/quick-test) — real
+      // round_type, not a bypass hack, so it's explicit and traceable
+      // through this exact same map rather than a separate gate.
+      quick_test: 1,
     };
     const normalizedRound = (() => {
       const map: Record<string, string> = {
@@ -205,6 +209,10 @@ export async function POST(req: NextRequest) {
       recommendation: debrief.summary.recommendation.toLowerCase().replace(/\s+/g, "_"),
       interview_depth: totalQuestions,
       session_duration_sec: Math.round((Date.now() - new Date(session.created_at).getTime()) / 1000),
+      // Lets this stay visible in Mixpanel for verifying the pipeline works
+      // (the whole point of the quick-test route) while staying filterable
+      // out of any real funnel/retention analysis.
+      is_test: session.round_type === "quick_test" ? true : undefined,
       $insert_id: stableInsertId(sessionId, "session_completed"),
     });
 

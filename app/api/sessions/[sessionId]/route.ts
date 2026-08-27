@@ -94,6 +94,7 @@ export async function GET(
         FROM sessions s
         JOIN debriefs d ON d.session_id = s.id
         WHERE s.user_email = ${userEmail} AND s.id != ${sessionId} AND s.status = 'completed'
+          AND s.round_type != 'quick_test'
         ORDER BY s.created_at ASC
         LIMIT 10
       `;

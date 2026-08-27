@@ -26,7 +26,7 @@ export async function GET(_req: NextRequest) {
         d.debrief_data->>'hire_recommendation' AS hire_recommendation
       FROM sessions s
       LEFT JOIN debriefs d ON d.session_id = s.id
-      WHERE s.user_email = ${user_email}
+      WHERE s.user_email = ${user_email} AND s.round_type != 'quick_test'
       ORDER BY s.created_at DESC
     `;
 
