@@ -5,6 +5,30 @@
 
 ---
 
+## ✅ Done (Session — 2026-08-27, Agent Org Phase 0)
+
+Built the "Autonomy Charter" agent org designed earlier in the same session (originally
+sketched from the user's own CSV, revised on direct feedback — a Chief of Staff was
+added so department heads don't all report straight to the founder, and the build order
+switched to "hire senior first": bring department heads online before any of their
+reports exist, each head's first job being to spec its own team).
+
+| Task | Notes |
+|---|---|
+| 12 subagents in `.claude/agents/` | Chief of Staff + full Tech pod (Planner, Coder, Tester, Debugger, Reviewer) + the remaining 6 department heads (Director of Compliance, Director of Analytics, VP Product, Marketing Director, Sales Head, VP of Monetization). Three-tier access (Read-Only/Write/Full-Auto) enforced via each file's `tools:` allowlist, not just prose — e.g. Reviewer has no `Edit`/`Write`/`Bash` at all. |
+| Legal mandate correction | Director of Compliance's job is finding where PrepSignals is *exposed* under Indian law (DPDP Act 2023, IT Act + IT Rules 2021, Consumer Protection Act + E-Commerce Rules, Contract Act, RBI recurring-payment rules), not finding loopholes to exploit — the original CSV draft had this inverted. |
+| No MCP servers wired to any seat | Explicit user instruction. Marketplace skills (`legal`, `sales`, `marketing`, `operations`, `data`, `small-business` — searched live, found real, not yet installed) bundle MCP servers (Gmail, Stripe, HubSpot, etc.) together with their skills; only the skill content gets referenced in agent prompts, never the bundled external-system access. Only the interactive session gets real send/spend/pay credentials. |
+| `docs/autonomy-charter.md` | Versioned reference doc — access tiers, Article II gate list, full org map including unbuilt Phase 2-4 departments, build sequence. Durable source of truth; an earlier artifact was the presentation layer at design time. |
+| `ops/` handoff folders | File-based handoff between departments (`ops/<department>/<subfolder>/`) rather than live agent-to-agent chat — simplest reliable mechanism, and what Chief of Staff's weekly brief reads from once more than one department is active. |
+| `CLAUDE.md` — new Agent Org section | Article II gate list now lives in this repo's own non-negotiable rules, not just in individual subagent prompts, so it binds future sessions the same way the existing rules do. |
+
+### Still open
+- Phase 1+ (each head building its own reports) not started — waits on Anshuman reviewing each head's Phase 0 hiring spec first.
+- Marketplace plugins (`legal`, `operations`, `data`, etc.) identified but not installed — installing is an account-level action the user hasn't triggered yet.
+- Not verified: whether `main` actually has GitHub branch protection enabled — the real backstop behind Coder's "never push to main" instruction. Flagged, not checked.
+
+---
+
 ## ✅ Done (Overnight session — `feat/phase2-2.5`, debrief/UI redesign)
 
 Worked autonomously per user direction from the end of the previous session's brainstorm

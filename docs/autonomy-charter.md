@@ -1,0 +1,59 @@
+# The Autonomy Charter
+
+How work gets delegated across PrepSignals as a one-person company: what each seat can decide on its own, and what always comes back to Anshuman. This is the versioned source of truth; a designed presentation of the same content was published as an artifact during the session this was built in — this file is what future sessions in this repo should actually read.
+
+## Access tiers
+
+- **Read-Only** — no write tools. Produces a review, a recommendation, a risk flag — never touches anything itself.
+- **Write** — can draft (code on a branch, a memo, an email, a policy line). Nothing it produces goes live, sends, spends, or merges without Anshuman.
+- **Full-Auto** — completes a routine, reversible, internal loop end to end without a check-in at every step. Still cannot cross into the Article II list below. That boundary is not a per-role setting; it's fixed.
+
+## Article II — always gated
+
+Blocked for Anshuman directly, no matter which seat or tier is asking:
+
+- Real money leaves the business (ad spend, tool subscriptions, any paid campaign)
+- A message reaches a real external person (a cold email/DM actually sent, a social post published, a reply to a real user)
+- Anything legal — ToS/Privacy Policy changes, filings, contracts, compliance claims made on the record
+- Pricing changes
+- Production database writes, schema changes, or any destructive data operation
+- A push to `main`, or a merge without the Reviewer's sign-off
+- Any user-facing copy referencing `hire_probability`, BARS scoring, or rubric internals — the existing non-negotiable rule from `CLAUDE.md`, not re-litigated per department
+- Hiring, contracts with real people, anything that legally binds the company
+
+Full-Auto never overrides this list.
+
+## Org map
+
+Chief of Staff sits between Anshuman and every department head — heads report to Chief of Staff, not directly to Anshuman.
+
+| Department | Phase | Seats |
+|---|---|---|
+| Chief of Staff | 0 — now | Chief of Staff |
+| Tech | 0 — now | Planner, Coder, Tester, Debugger, Reviewer |
+| Legal | 1 — next | Director of Compliance, Compliance Associate, Senior Compliance Counsel, Specialist Counsel |
+| Analytics | 1 — next | Director of Analytics, Junior Analyst, Senior Analyst, Data Engineer |
+| Product | 2 | VP Product, SPM, PM, APM |
+| Marketing | 3 (gated on Monetisation shipping) | Marketing Director, Analyst, Social Media Manager, Outreach Manager, Paid Ads Manager |
+| Sales — Institutional | 3 (gated on Monetisation shipping) | Sales Head, Institutional BD Associate, Institutional Outreach Manager, Qualifier |
+| Lifecycle | 4 (follows Phase 3) | VP of Monetization, Lifecycle Manager, Lifecycle Associate |
+
+Business (Associate → Director) as originally proposed is folded into Product + Analytics rather than run as a ninth department — it duplicated both without adding a distinct read.
+
+## Build sequence
+
+**Phase 0 (built this session):** Chief of Staff + all 7 other department heads, temporarily elevated from Read-Only to Write since none has reports yet — each head's Phase 0 job is real first-pass work in its domain *plus* a hiring spec for its own team. Tech is the exception: Planner is Write by design (not elevated), and Reviewer ships alongside it as a fixed paired control rather than "a team lead who builds reports," since Planner's output needs a gate from day one.
+
+**Phase 1+:** each head builds out its own reports, in this order — Tech's remaining seats first (done this session too, since the pipeline needs Coder/Tester/Debugger to be useful at all), then Legal + Analytics in parallel (no external blast radius, useful today), then Product, then Marketing + Institutional Sales (once Monetisation ships), then Lifecycle.
+
+## Seats, table by table
+
+Full per-seat mandate, model, and skill assignment lives in `.claude/agents/*.md` — one file per built seat. This doc tracks the org shape and the gate; the agent files are the operational detail and are the ones that actually run.
+
+## Skills
+
+Two separate provisioning axes, deliberately kept apart: a **Skill** is a playbook/reference the agent can invoke (via the `Skill` tool); an **MCP connector** is live access to an external system (Gmail, Stripe, HubSpot, etc.). Marketplace plugins usually bundle both together — installing one for its skill does not mean wiring its MCP servers into any subagent's tool list. No automated seat gets real send-email, real ad-spend, or real payment access. Only the interactive session Anshuman is driving gets that, ever.
+
+Currently referenced built-in skills: `internal-comms` (Chief of Staff), `code-review` + `security-review` (Reviewer), `product-design-principles` (VP Product), `humanizer` (Marketing Director), `dataviz` (Director of Analytics).
+
+Marketplace plugins identified but not installed (`legal`, `sales`, `marketing`, `operations`, `data`, `small-business` — all in the `knowledge-work-plugins` marketplace): referenced by name in the relevant agent files as closer-fit skills to adopt once installed. No India-specific DPDP/compliance skill exists on the marketplace as of this writing — Director of Compliance's India-law grounding is this repo's own work, not something bought off the shelf.
