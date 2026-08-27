@@ -191,9 +191,15 @@ export async function POST(req: NextRequest) {
     // including to a third-party analytics vendor. Value is lowercased/
     // snake_cased for the analytics property per Mixpanel's enum convention;
     // the Title Case UI copy in debrief.summary.recommendation is untouched.
+    // interview_depth reuses totalQuestions (already round-type-normalized
+    // above) rather than a fresh lookup — see note below about a real,
+    // separate inconsistency this surfaced between this file's and
+    // /api/interview/question's round-type normalization maps.
     track("session_completed", userId ?? session.user_email, {
       round_type: session.round_type,
       recommendation: debrief.summary.recommendation.toLowerCase().replace(/\s+/g, "_"),
+      interview_depth: totalQuestions,
+      session_duration_sec: Math.round((Date.now() - new Date(session.created_at).getTime()) / 1000),
       $insert_id: stableInsertId(sessionId, "session_completed"),
     });
 

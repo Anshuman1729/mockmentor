@@ -4,6 +4,8 @@ import { auth } from "@clerk/nextjs/server";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import { ChevronRight, ArrowUpRight, Shield, Award, Clock, Quote, BookOpen, CreditCard } from "lucide-react";
 import InteractivePreview from "@/components/InteractivePreview";
+import LandingPageView from "@/components/LandingPageView";
+import TrackedCta from "@/components/TrackedCta";
 
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -29,6 +31,7 @@ export default async function LandingPage() {
 
   return (
     <div className={`${plusJakarta.className} min-h-screen bg-white text-gray-950`}>
+      <LandingPageView />
       {/* Navigation */}
       <nav className="sticky top-0 z-40 w-full border-b border-gray-100 bg-white/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
@@ -38,9 +41,9 @@ export default async function LandingPage() {
             <Link href="#proof" className="hidden sm:inline hover:text-gray-950">Proof</Link>
             <Link href="/sign-in" className="text-gray-950 hover:underline">Sign in</Link>
             {!isSignedIn && (
-              <Link href="/dashboard" className="landing-nav-cta rounded-full px-4 py-2 text-sm font-semibold text-white transition-colors">
+              <TrackedCta href="/dashboard" ctaLocation="top_nav" className="landing-nav-cta rounded-full px-4 py-2 text-sm font-semibold text-white transition-colors">
                 Start free
-              </Link>
+              </TrackedCta>
             )}
           </div>
         </div>
@@ -101,12 +104,13 @@ export default async function LandingPage() {
               </p>
               <div className="landing-reveal-4 flex flex-wrap gap-3">
                 {!isSignedIn ? (
-                  <Link
+                  <TrackedCta
                     href="/dashboard"
+                    ctaLocation="hero"
                     className="landing-cta inline-flex items-center gap-2 rounded-full px-8 py-4 text-base font-semibold text-white transition-all hover:-translate-y-0.5"
                   >
                     Start your mock interview <ArrowUpRight className="w-4 h-4" />
-                  </Link>
+                  </TrackedCta>
                 ) : (
                   <Link
                     href="/dashboard"
@@ -318,9 +322,9 @@ export default async function LandingPage() {
             <p className="mt-6 text-lg text-gray-400">Free mock interview. Full evidence debrief. No credit card. No experience needed — we&apos;ll walk you through it.</p>
             <div className="mt-10 flex flex-wrap justify-center gap-4">
               {!isSignedIn ? (
-                <Link href="/dashboard" className="inline-flex items-center gap-2 rounded-full bg-white px-8 py-4 text-base font-extrabold text-gray-950 shadow-2xl shadow-white/10 hover:bg-gray-100 transition-all hover:-translate-y-0.5">
+                <TrackedCta href="/dashboard" ctaLocation="bottom" className="inline-flex items-center gap-2 rounded-full bg-white px-8 py-4 text-base font-extrabold text-gray-950 shadow-2xl shadow-white/10 hover:bg-gray-100 transition-all hover:-translate-y-0.5">
                   Start your mock interview <ArrowUpRight className="w-4 h-4" />
-                </Link>
+                </TrackedCta>
               ) : (
                 <Link href="/dashboard" className="inline-flex items-center gap-2 rounded-full bg-white px-8 py-4 text-base font-extrabold text-gray-950 shadow-2xl shadow-white/10 hover:bg-gray-100 transition-all hover:-translate-y-0.5">
                   Go to Dashboard <ChevronRight className="w-4 h-4" />

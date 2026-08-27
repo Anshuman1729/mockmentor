@@ -26,6 +26,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import JDFallback from "./JDFallback";
+import { trackClient, identifyClient } from "@/lib/analytics-client";
 
 const COMPANY_STAGES = ["Seed", "Series A", "Series B", "Public"];
 
@@ -65,6 +66,10 @@ const STEPS = [
 
 const DRAFT_KEY = "prepsignals:setup-draft";
 const PENDING_SUBMIT_KEY = "prepsignals:setup-pending-submit";
+// Which auth mode the visitor was sent to — read back on the resume effect
+// below so a returning user logging back in isn't miscounted as a fresh
+// signup in the funnel.
+const PENDING_AUTH_MODE_KEY = "prepsignals:setup-pending-auth-mode";
 
 type Draft = {
   step: number;
@@ -93,7 +98,7 @@ function loadDraft(): Draft | null {
 
 export default function SetupForm() {
   const router = useRouter();
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, userId } = useAuth();
   const [initialDraft] = useState(loadDraft);
 
   const [step, setStep] = useState(initialDraft?.step ?? 0);
@@ -137,12 +142,24 @@ export default function SetupForm() {
   useEffect(() => {
     if (!isLoaded || !isSignedIn || resumeAttempted.current) return;
     let pending = false;
+    let authMode: string | null = null;
     try {
       pending = window.sessionStorage.getItem(PENDING_SUBMIT_KEY) === "1";
+      authMode = window.sessionStorage.getItem(PENDING_AUTH_MODE_KEY);
+      window.sessionStorage.removeItem(PENDING_AUTH_MODE_KEY);
     } catch {
       pending = false;
     }
     if (!pending) return;
+
+    // Identify explicitly here rather than relying solely on
+    // MixpanelProvider's own effect — cheap and idempotent, and guarantees
+    // the conversion event below is never attributed to the anonymous id.
+    if (userId) identifyClient(userId);
+    // authMode distinguishes a genuinely new account from a returning user
+    // who just needed to log back in — conflating the two would inflate
+    // the funnel's actual signup-conversion number.
+    trackClient(authMode === "sign-up" ? "sign_up_completed" : "sign_in_completed");
 
     resumeAttempted.current = true;
     setResumingAfterAuth(true);
@@ -172,6 +189,11 @@ export default function SetupForm() {
       return;
     }
     setError(null);
+    // Per-step funnel events rather than one rollup at the end — snake_case
+    // to match every other event's naming convention (avoids the same
+    // casing-inconsistency issue already found with round_type).
+    if (STEPS[step].key === "basics") trackClient("basics_submit");
+    else if (STEPS[step].key === "personalize") trackClient("personalisation_submit");
     setStep((s) => s + 1);
   }
 
@@ -285,6 +307,7 @@ export default function SetupForm() {
     const finalJdContent = await resolveJdContent();
     if (!finalJdContent) return;
 
+    trackClient("jd_submit", { auth_state: "signed_in" });
     setSubmitting(true);
     try {
       await createSession(form, finalJdContent);
@@ -307,9 +330,11 @@ export default function SetupForm() {
     const finalJdContent = await resolveJdContent();
     if (!finalJdContent) return;
 
+    trackClient("jd_submit", { auth_state: "signed_out" });
     try {
       window.sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ step, form, jdContent: finalJdContent }));
       window.sessionStorage.setItem(PENDING_SUBMIT_KEY, "1");
+      window.sessionStorage.setItem(PENDING_AUTH_MODE_KEY, mode);
     } catch {
       // If sessionStorage isn't available the redirect will just land on an
       // empty dashboard — no worse than today's login-gated flow.
