@@ -31,14 +31,28 @@ Chief of Staff sits between Anshuman and every department head — heads report 
 |---|---|---|
 | Chief of Staff | 0 — now | Chief of Staff |
 | Tech | 0 — now | Planner, Coder, Tester, Debugger, Reviewer |
-| Legal | 1 — next | Director of Compliance, Compliance Associate, Senior Compliance Counsel, Specialist Counsel |
-| Analytics | 1 — next | Director of Analytics, Junior Analyst, Senior Analyst, Data Engineer |
+| Legal | 1 — now | Director of Compliance, Compliance Associate, Senior Compliance Counsel, Specialist Counsel |
+| Analytics | 1 — now | Director of Analytics, Junior Analyst, Senior Analyst, Data Engineer |
 | Product | 2 | VP Product, SPM, PM, APM |
 | Marketing | 3 (gated on Monetisation shipping) | Marketing Director, Analyst, Social Media Manager, Outreach Manager, Paid Ads Manager |
 | Sales — Institutional | 3 (gated on Monetisation shipping) | Sales Head, Institutional BD Associate, Institutional Outreach Manager, Qualifier |
 | Lifecycle | 4 (follows Phase 3) | VP of Monetization, Lifecycle Manager, Lifecycle Associate |
 
 Business (Associate → Director) as originally proposed is folded into Product + Analytics rather than run as a ninth department — it duplicated both without adding a distinct read.
+
+**Legal and Analytics are not flat.** Both hiring specs (`ops/legal/hiring-spec.md`, `ops/analytics/hiring-spec.md`) originally proposed all three reportees flat to their Director — Anshuman rejected that as an unfair review structure and overload on a single Director reviewing three reports directly. Approved instead:
+
+```
+Director of Compliance                    Director of Analytics
+├── Senior Compliance Counsel              ├── Senior Analyst
+│   └── Compliance Associate               │   └── Junior Analyst
+└── Specialist Counsel                     └── Data Engineer
+```
+
+- **Legal:** Compliance Associate → Senior Compliance Counsel → Director of Compliance. Specialist Counsel → Director of Compliance directly.
+- **Analytics:** Junior Analyst → Senior Analyst → Director of Analytics. Data Engineer → Director of Analytics directly.
+
+Build order (the sequence these seats were actually built in, distinct from the reporting chain above): Legal — Compliance Associate → Specialist Counsel → Senior Compliance Counsel. Analytics — Junior Analyst → Data Engineer → Senior Analyst.
 
 ## Build sequence
 
