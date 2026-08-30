@@ -2,12 +2,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { assertSessionOwner } from "@/lib/session-auth";
 import { sql } from "@/lib/db";
-import { generateDebrief } from "@/lib/groq";
+import { generateDebrief, DebriefSynthesisDeferredError } from "@/lib/groq";
 import { sendDebriefEmail } from "@/lib/email";
 import { calculateNormalizedScore } from "@/lib/rubric-researched";
 import { checkFatalFlag, applyFatalFlag } from "@/lib/fatal-flag";
 import { track, stableInsertId } from "@/lib/analytics";
 import { getTotalQuestions } from "@/lib/round-types";
+
+// B4: the debrief route does two sequential Groq calls (realistically
+// 10-25s), plus an inline wait when the TPM budget is tight (up to
+// MAX_INLINE_WAIT_MS = 20s in lib/groq.ts), plus 3 DB writes plus an email
+// send — all inside one request. No maxDuration was set anywhere in this
+// app (confirmed via `grep maxDuration app/`, no vercel.json) before this,
+// so this route was plausibly already timing out intermittently on
+// Vercel's default duration, independent of the TPM issue this file also
+// fixes. 60s leaves ~40s for the two calls + DB writes + email after the
+// worst-case inline wait. NOTE: this assumes the deployed Vercel plan
+// accepts a 60s route duration — that could not be confirmed from this
+// sandbox (no access to the actual Vercel project/plan tier); if the real
+// plan's ceiling is lower, this constant and MAX_INLINE_WAIT_MS both need
+// to come down proportionally rather than silently exceeding it.
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   // Hoisted out of the try block so the catch block below can attribute a
@@ -71,6 +86,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { report: debrief, usage } = await generateDebrief(
+      sessionId,
       {
         role: session.role,
         company: session.company,
@@ -243,6 +259,39 @@ export async function POST(req: NextRequest) {
     const { id, session_id, created_at } = inserted[0];
     return NextResponse.json({ debrief: { id, session_id, created_at } });
   } catch (err) {
+    // B5: must be checked BEFORE the generic catch below and must be
+    // completely side-effect-free — a deferral means generateDebrief threw
+    // before call 2 ever ran, so we must not reach the debriefs INSERT,
+    // sessions UPDATE, calibration_loops INSERT, or sendDebriefEmail below.
+    // Throwing from inside generateDebrief (rather than returning a sentinel)
+    // already guarantees this structurally, but it's also covered by an
+    // explicit test (test/debrief-tpm.spec.ts) asserting zero calls to each.
+    // calibration_loops has no unique constraint on session_id, so a
+    // half-completed attempt followed by a retry would otherwise produce
+    // duplicate calibration rows and quietly corrupt the calibration
+    // dataset — this is the failure this ordering exists to prevent.
+    if (err instanceof DebriefSynthesisDeferredError) {
+      if (sessionId) {
+        // Distinct from debrief_generation_failed — a deferral that later
+        // succeeds is not a failure and must not pollute the failure funnel.
+        track("debrief_generation_deferred", userId ?? "unknown", {
+          retry_after_ms: err.retryAfterMs,
+          $insert_id: stableInsertId(sessionId, "debrief_generation_deferred"),
+        });
+      }
+      return NextResponse.json(
+        {
+          // User-safe copy only — no mention of rate limits, TPM, Groq, or
+          // tokens (CLAUDE.md forbids exposing LLM internals in user-facing
+          // copy).
+          error: "Your report is taking a little longer than usual — hang tight.",
+          code: "SYNTHESIS_DEFERRED",
+          retryAfterMs: err.retryAfterMs,
+        },
+        { status: 503 }
+      );
+    }
+
     console.error("[POST /api/interview/debrief]", err);
     // Only ever surface our own known-safe, user-facing retry messages from
     // generateDebrief (truncated/malformed/incomplete LLM response) — never

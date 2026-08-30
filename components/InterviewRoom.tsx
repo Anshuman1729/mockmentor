@@ -64,6 +64,14 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
   // Instrumentation: answer duration (#10) and candidate question rate (#11)
   const answerStartTimeRef = useRef<number | null>(null);
   const [candidateQuestions, setCandidateQuestions] = useState(0);
+  // Secondary status line on the loading screen for a deferred-then-retried
+  // debrief (see docs/plans/debrief-tpm-fix.md §6). A ref, not state, guards
+  // the auto-retry count — it must survive across the retry's own re-render
+  // without itself triggering one, and it must never allow more than one
+  // automatic retry against what is, structurally, a rate-limit condition.
+  const [debriefStatusNote, setDebriefStatusNote] = useState<string | null>(null);
+  const debriefRetryCountRef = useRef(0);
+  const debriefRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -139,7 +147,26 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
         body: JSON.stringify({ sessionId }),
       });
       const dd = await dr.json();
-      if (!dr.ok) throw new Error(dd.error ?? "Failed to generate debrief");
+      if (!dr.ok) {
+        // Deferred-generation path: stay on the loading screen and auto-retry
+        // exactly once, guarded by a ref (not state) so this can never loop.
+        // A second failure — deferred again, or any other error — falls
+        // through to the existing manual "Try again" screen below.
+        if (
+          dr.status === 503 &&
+          dd.code === "SYNTHESIS_DEFERRED" &&
+          debriefRetryCountRef.current === 0
+        ) {
+          debriefRetryCountRef.current += 1;
+          setDebriefStatusNote("Your report is taking a little longer than usual — hang tight.");
+          const retryAfterMs = typeof dd.retryAfterMs === "number" ? dd.retryAfterMs : 5000;
+          debriefRetryTimeoutRef.current = setTimeout(() => {
+            generateDebrief();
+          }, retryAfterMs + 1000);
+          return;
+        }
+        throw new Error(dd.error ?? "Failed to generate debrief");
+      }
       if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
       router.push(`/debrief/${sessionId}`);
     } catch (err) {
@@ -147,6 +174,14 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       setRoomState("debrief-failed");
     }
   }, [sessionId, router, candidateQuestions]);
+
+  // Clear any pending auto-retry timeout on unmount so a user who navigates
+  // away mid-wait doesn't fire a stray POST after the component is gone.
+  useEffect(() => {
+    return () => {
+      if (debriefRetryTimeoutRef.current) clearTimeout(debriefRetryTimeoutRef.current);
+    };
+  }, []);
 
   // ── Fetch question → speak → listen ─────────────────────────────────────────
   const fetchNextQuestion = useCallback(async () => {
@@ -568,7 +603,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
 
   // ── Debrief loading screen ────────────────────────────────────────────────────
   if (roomState === "generating-debrief") {
-    return <DebriefLoadingScreen />;
+    return <DebriefLoadingScreen statusNote={debriefStatusNote ?? undefined} />;
   }
 
   // ── Debrief failed — dedicated retry, not "answer another question" ──────────
