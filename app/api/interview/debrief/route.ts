@@ -2,11 +2,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { assertSessionOwner } from "@/lib/session-auth";
 import { sql } from "@/lib/db";
-import { generateDebrief } from "@/lib/groq";
+import { generateDebrief, DebriefSynthesisDeferredError } from "@/lib/groq";
 import { sendDebriefEmail } from "@/lib/email";
 import { calculateNormalizedScore } from "@/lib/rubric-researched";
-import { checkFatalFlag } from "@/lib/fatal-flag";
+import { checkFatalFlag, applyFatalFlag } from "@/lib/fatal-flag";
 import { track, stableInsertId } from "@/lib/analytics";
+import { getTotalQuestions } from "@/lib/round-types";
+
+// B4: the debrief route does two sequential Groq calls (realistically
+// 10-25s), plus an inline wait when the TPM budget is tight (up to
+// MAX_INLINE_WAIT_MS = 20s in lib/groq.ts), plus 3 DB writes plus an email
+// send — all inside one request. No maxDuration was set anywhere in this
+// app (confirmed via `grep maxDuration app/`, no vercel.json) before this,
+// so this route was plausibly already timing out intermittently on
+// Vercel's default duration, independent of the TPM issue this file also
+// fixes. 60s leaves ~40s for the two calls + DB writes + email after the
+// worst-case inline wait. NOTE: this assumes the deployed Vercel plan
+// accepts a 60s route duration — that could not be confirmed from this
+// sandbox (no access to the actual Vercel project/plan tier); if the real
+// plan's ceiling is lower, this constant and MAX_INLINE_WAIT_MS both need
+// to come down proportionally rather than silently exceeding it.
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   // Hoisted out of the try block so the catch block below can attribute a
@@ -33,7 +49,11 @@ export async function POST(req: NextRequest) {
     // Check if debrief already exists
     const existing = await sql`SELECT * FROM debriefs WHERE session_id = ${sessionId}`;
     if (existing.length > 0) {
-      return NextResponse.json({ debrief: existing[0] });
+      // Deliberate: never return the full row — debrief_data.summary.hire_probability
+      // and the internal reasoning column must never reach the client. See the
+      // non-negotiable rule against exposing hire_probability/BARS internals.
+      const { id, session_id, created_at } = existing[0];
+      return NextResponse.json({ debrief: { id, session_id, created_at } });
     }
 
     const qas = await sql`
@@ -41,27 +61,12 @@ export async function POST(req: NextRequest) {
     `;
 
     // Round-type → total question count, shared by the completeness gate below
-    // and the Fatal Flag check further down.
-    const QUESTIONS_BY_ROUND: Record<string, number> = {
-      technical_screen: 5, technical_deep_dive: 8, system_design: 6,
-      behavioural: 7, final: 8, hr_screen: 5, case_study: 5,
-      // legacy keys for old sessions
-      screening: 5, technical: 8,
-      // Hidden 1-question test shortcut (app/api/dev/quick-test) — real
-      // round_type, not a bypass hack, so it's explicit and traceable
-      // through this exact same map rather than a separate gate.
-      quick_test: 1,
-    };
-    const normalizedRound = (() => {
-      const map: Record<string, string> = {
-        "technical screen": "technical_screen", "technical deep dive": "technical_deep_dive",
-        "system design": "system_design", "behavioral": "behavioural",
-        "final round": "final", "hr screen": "hr_screen", "case study": "case_study",
-        "screening": "screening", "technical": "technical",
-      };
-      return map[(session.round_type ?? "").toLowerCase()] ?? session.round_type?.toLowerCase() ?? "technical_screen";
-    })();
-    const totalQuestions = QUESTIONS_BY_ROUND[normalizedRound] ?? 7;
+    // and the Fatal Flag check further down. Resolved via the shared
+    // lib/round-types module — see that file's header comment for why this
+    // used to be a separate, disagreeing map from /api/interview/question's
+    // (that inconsistency is what this shared module removes; the two
+    // routes now always resolve the same round_type to the same count).
+    const totalQuestions = getTotalQuestions(session.round_type);
 
     // Completeness gate: any skipped (unanswered) question blocks report
     // generation entirely — zero tolerance, distinct from Fatal Flag's
@@ -81,6 +86,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { report: debrief, usage } = await generateDebrief(
+      sessionId,
       {
         role: session.role,
         company: session.company,
@@ -145,18 +151,27 @@ export async function POST(req: NextRequest) {
       hireProbability >= 45 ? "Borderline" : "No Hire";
     debrief.summary.recommendation = recommendation as typeof debrief.summary.recommendation;
 
-    // Fix B: Fatal flag — >30% zero-signal → force No Hire, cap hire_probability ≤30
+    // Fix B: Fatal flag — >30% zero-signal → force No Hire, cap hire_probability ≤30.
+    // applyFatalFlag never touches overall_impression — that field is user-facing
+    // (rendered as the interviewer's first-person verdict quote) and must never
+    // carry an internal bracketed marker prefix.
+    // Math.max guard: for every current-UI session the completeness gate
+    // above already guarantees qas.length >= totalQuestions (generation
+    // stops exactly at totalQuestions), so this is a no-op in that path. It
+    // only protects a legacy row that happens to hold more QA pairs than
+    // the newly-resolved totalQuestions from being scored against a
+    // too-small denominator and getting an inflated (and wrong) skip rate.
     const fatalFlag = checkFatalFlag(
       qas.map((qa) => ({ question_number: qa.question_number, answer: qa.answer })),
-      totalQuestions
+      Math.max(totalQuestions, qas.length)
     );
-    if (fatalFlag.triggered) {
-      hireProbability = Math.min(hireProbability, 30);
-      debrief.summary.recommendation = "No Hire";
-      debrief.summary.overall_impression =
-        `[FATAL FLAG] ${Math.round(fatalFlag.skipRate * 100)}% of questions received zero-signal responses. ` +
-        debrief.summary.overall_impression;
-    }
+    const fatalFlagResult = applyFatalFlag(
+      hireProbability,
+      debrief.summary.recommendation,
+      fatalFlag
+    );
+    hireProbability = fatalFlagResult.hireProbability;
+    debrief.summary.recommendation = fatalFlagResult.recommendation;
 
     // Inject computed values (overwrite LLM placeholders)
     debrief.summary.hire_probability = hireProbability;
@@ -174,11 +189,14 @@ export async function POST(req: NextRequest) {
     }
     debrief.metrics.candidate_questions_asked = session.candidate_questions_asked ?? 0;
 
-    // Extract reasoning for shadow scoring (stored separately, not in user-facing debrief_data)
-    const reasoning = debrief.skill_analysis.map((s) => ({
+    // Extract reasoning for shadow scoring (stored separately, not in user-facing debrief_data).
+    // NOTE: older rows in this JSONB column are a bare array (just `signals`) —
+    // any future reader of debriefs.reasoning must handle both shapes.
+    const signalReasoning = debrief.skill_analysis.map((s) => ({
       parameter_id: s.parameter_id,
       reasoning: s.reasoning,
     }));
+    const reasoning = { signals: signalReasoning, fatal_flag: fatalFlagResult.internalNote };
 
     const inserted = await sql`
       INSERT INTO debriefs (session_id, debrief_data, reasoning, tokens_used)
@@ -201,9 +219,10 @@ export async function POST(req: NextRequest) {
     // snake_cased for the analytics property per Mixpanel's enum convention;
     // the Title Case UI copy in debrief.summary.recommendation is untouched.
     // interview_depth reuses totalQuestions (already round-type-normalized
-    // above) rather than a fresh lookup — see note below about a real,
-    // separate inconsistency this surfaced between this file's and
-    // /api/interview/question's round-type normalization maps.
+    // above via the shared lib/round-types module) rather than a fresh
+    // lookup — this file and /api/interview/question now always agree on
+    // round-type normalization and question counts, so there's no longer a
+    // risk of the two disagreeing here.
     track("session_completed", userId ?? session.user_email, {
       round_type: session.round_type,
       recommendation: debrief.summary.recommendation.toLowerCase().replace(/\s+/g, "_"),
@@ -234,8 +253,45 @@ export async function POST(req: NextRequest) {
       debrief
     );
 
-    return NextResponse.json({ debrief: inserted[0] });
+    // Deliberate: never return the full row — debrief_data.summary.hire_probability
+    // and the internal reasoning column must never reach the client. See the
+    // non-negotiable rule against exposing hire_probability/BARS internals.
+    const { id, session_id, created_at } = inserted[0];
+    return NextResponse.json({ debrief: { id, session_id, created_at } });
   } catch (err) {
+    // B5: must be checked BEFORE the generic catch below and must be
+    // completely side-effect-free — a deferral means generateDebrief threw
+    // before call 2 ever ran, so we must not reach the debriefs INSERT,
+    // sessions UPDATE, calibration_loops INSERT, or sendDebriefEmail below.
+    // Throwing from inside generateDebrief (rather than returning a sentinel)
+    // already guarantees this structurally, but it's also covered by an
+    // explicit test (test/debrief-tpm.spec.ts) asserting zero calls to each.
+    // calibration_loops has no unique constraint on session_id, so a
+    // half-completed attempt followed by a retry would otherwise produce
+    // duplicate calibration rows and quietly corrupt the calibration
+    // dataset — this is the failure this ordering exists to prevent.
+    if (err instanceof DebriefSynthesisDeferredError) {
+      if (sessionId) {
+        // Distinct from debrief_generation_failed — a deferral that later
+        // succeeds is not a failure and must not pollute the failure funnel.
+        track("debrief_generation_deferred", userId ?? "unknown", {
+          retry_after_ms: err.retryAfterMs,
+          $insert_id: stableInsertId(sessionId, "debrief_generation_deferred"),
+        });
+      }
+      return NextResponse.json(
+        {
+          // User-safe copy only — no mention of rate limits, TPM, Groq, or
+          // tokens (CLAUDE.md forbids exposing LLM internals in user-facing
+          // copy).
+          error: "Your report is taking a little longer than usual — hang tight.",
+          code: "SYNTHESIS_DEFERRED",
+          retryAfterMs: err.retryAfterMs,
+        },
+        { status: 503 }
+      );
+    }
+
     console.error("[POST /api/interview/debrief]", err);
     // Only ever surface our own known-safe, user-facing retry messages from
     // generateDebrief (truncated/malformed/incomplete LLM response) — never

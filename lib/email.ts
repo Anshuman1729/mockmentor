@@ -1,6 +1,16 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Lazy client — only instantiated on first use (avoids build-time env var errors)
+let _client: Resend | null = null;
+function getResendClient(): Resend {
+  if (!_client) {
+    if (!process.env.RESEND_API_KEY) {
+      throw new Error("RESEND_API_KEY environment variable is not set");
+    }
+    _client = new Resend(process.env.RESEND_API_KEY);
+  }
+  return _client;
+}
 
 interface SkillAnalysis {
   parameter_id: string;
@@ -185,7 +195,7 @@ export async function sendDebriefEmail(session: Session, debrief: Debrief) {
     return;
   }
   try {
-    await resend.emails.send({
+    await getResendClient().emails.send({
       from: "PrepSignals <onboarding@resend.dev>",
       to: [session.user_email],
       subject: `Your interview debrief — ${session.role} at ${session.company}`,

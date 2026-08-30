@@ -29,13 +29,15 @@ Stack: Next.js 16 (App Router), TypeScript, Tailwind CSS, Neon Postgres, Groq AP
 
 ### Agent Org
 - This repo has an AI agent org defined in `.claude/agents/` — Phase 0 built 2026-08-27: Chief of Staff, the full Tech pod (Planner/Coder/Tester/Debugger/Reviewer), and the remaining 6 department heads (Director of Compliance, Director of Analytics, VP Product, Marketing Director, Sales Head, VP of Monetization), all reporting to Chief of Staff rather than directly to Anshuman
+- Phase 1 built 2026-08-28: Legal (Compliance Associate, Senior Compliance Counsel, Specialist Counsel) and Analytics (Junior Analyst, Senior Analyst, Data Engineer). Neither department is flat under its Director — see `docs/autonomy-charter.md`'s org map for the actual reporting chain (a Senior seat sits between the Director and the junior-most seat in each department; one seat per department reports to the Director directly)
+- Phase 2 built 2026-08-28: Product (PM, APM, SPM). Also not flat under VP Product, for its own reason (VP Product's mandate excludes single-feature ownership) — SPM and PM are direct reports, APM reports to PM rather than VP Product. See `docs/autonomy-charter.md`'s org map for the full chain and reasoning
 - Full reference: `docs/autonomy-charter.md` — access tiers, org map, phased rollout
 - **The Article II gate list applies to every agent seat regardless of tier or which session is running it**: real money spent, a message reaching a real external person, anything legal (ToS/filings/contracts), pricing changes, prod DB writes, a push to `main` or a merge without Reviewer's sign-off, any user-facing `hire_probability`/BARS/rubric exposure (this repeats the two rules above — the point is it's not re-litigated per department), hiring/contracts. No automated seat holds real external-system credentials (email send, payments, ad platforms) — only the interactive session Anshuman is driving does.
 
 ## Key Architecture Decisions
 - **Evidence-first scoring**: LLM extracts verbatim quotes per signal; TS calculates hire_probability (vibe-proof)
 - **Seniority modifiers**: `calculateNormalizedScore()` applies Junior/Mid/Senior weights from `lib/rubric-researched.ts`
-- **Round-dynamic question counts** (`QUESTIONS_BY_ROUND` in `app/api/interview/question/route.ts`): technical_screen=5, technical_deep_dive=8, system_design=6, behavioural=7, final=8, hr_screen=5, case_study=5. (This line previously said "screening=5, technical=8, final=10, behavioural=7" — final was wrong (10 vs actual 8), and several round types weren't listed at all.)
+- **Round-dynamic question counts** (`QUESTIONS_BY_ROUND` in `lib/round-types.ts`, shared by both the question and debrief routes): technical_screen=5, technical_deep_dive=8, system_design=6, behavioural=7, final=8, hr_screen=5, case_study=5, quick_test=1. (This line previously said "screening=5, technical=8, final=10, behavioural=7" — final was wrong (10 vs actual 8), and several round types weren't listed at all.)
 - **Lazy Groq client**: instantiated on first use to avoid build-time env var errors
 - **Signal-Seeking Seeding** (done — landed via `feat/intelligence-db-fatal-flag`, this line previously said "planned" which contradicted the PRD Status table below marking it ✅ Done): question route fetches a verified seed from `question_bank` (domain → company → generic match, excluding already-used seeds), only for technical-style rounds (see `seedRoundType()` — HR/behavioral rounds never use domain-seeded generation, since it has no round-type awareness of its own). Seed passed to `generateNextQuestion` which LLM-adapts it to target uncovered signals.
 - **Fatal Flag** (done, same stale-"planned" fix as above): `lib/fatal-flag.ts` — deterministic, no LLM. Zero signal = null answer, <10 words, or "I don't know" phrases. >30% skip rate → force "No Hire", cap hire_probability ≤30.
@@ -61,7 +63,7 @@ npm run test:coverage        # vitest with coverage
 - `scripts/audit-gaps/lighthouse-check.mjs` and `axe-core-check.mjs` exist for perf/a11y checks against a running dev server — not wired into CI yet, run manually
 
 ## DB Schema Notes
-- `debriefs` columns: `debrief_data` (JSONB, user-facing), `reasoning` (JSONB, internal), `actual_outcome` (TEXT), `company_type` (TEXT), `tokens_used` (JSONB: `{input_tokens, output_tokens, model}`)
+- `debriefs` columns: `debrief_data` (JSONB, user-facing), `reasoning` (JSONB, internal — now `{ signals, fatal_flag }`, was a bare array), `actual_outcome` (TEXT), `company_type` (TEXT), `tokens_used` (JSONB: `{input_tokens, output_tokens, model}`)
 - `qa_pairs` columns: `answer_duration_sec` (FLOAT), `seed_question_id` (UUID FK→question_bank — column exists, not yet populated)
 - `sessions` columns: `candidate_questions_asked` (INTEGER DEFAULT 0), `company_stage` (TEXT)
 - **Live tables** (Intelligence DB — created `feat/intelligence-db-fatal-flag`):

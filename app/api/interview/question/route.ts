@@ -2,43 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { assertSessionOwner } from "@/lib/session-auth";
 import { sql } from "@/lib/db";
 import { generateNextQuestion, generateDomainQuestion, SeedQuestion } from "@/lib/groq";
-
-const QUESTIONS_BY_ROUND: Record<string, number> = {
-  technical_screen: 5,
-  technical_deep_dive: 8,
-  system_design: 6,
-  behavioural: 7,
-  final: 8,
-  hr_screen: 5,
-  case_study: 5,
-};
-
-function normalizeRoundType(raw: string): string {
-  const map: Record<string, string> = {
-    "technical screen": "technical_screen",
-    "technical deep dive": "technical_deep_dive",
-    "system design": "system_design",
-    "behavioral": "behavioural",
-    "behavioural": "behavioural",
-    "final round": "final",
-    "hr screen": "hr_screen",
-    "case study": "case_study",
-    // passthrough for already-normalized values
-    "screening": "technical_screen",
-    "technical": "technical_screen",
-    "final": "final",
-  };
-  return map[raw.toLowerCase()] ?? "technical_screen";
-}
-
-function seedRoundType(normalized: string): string {
-  if (normalized === "behavioural" || normalized === "hr_screen") return "behavioural";
-  return "technical";
-}
-
-function getTotalQuestions(roundType: string): number {
-  return QUESTIONS_BY_ROUND[roundType] ?? 7;
-}
+import { normalizeRoundType, getTotalQuestions, seedRoundType } from "@/lib/round-types";
 
 export async function POST(req: NextRequest) {
   try {

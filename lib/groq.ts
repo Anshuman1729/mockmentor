@@ -1,4 +1,5 @@
 import Groq from "groq-sdk";
+import { getCachedScoring, setCachedScoring, clearCachedScoring } from "./debrief-cache";
 
 // Lazy client — only instantiated on first use (avoids build-time env var errors)
 let _client: Groq | null = null;
@@ -413,6 +414,15 @@ const CORE_SCORING_EXAMPLE = `
 }
 `.trim();
 
+// A4: trimmed from a full-report example to just what teaches register — the
+// first-person interviewer voice and the Observed -> Problem -> Better
+// structure are the entire point of the "Coaching Cockpit" rework (direct
+// user feedback, see CLAUDE.md). The dropped fields (second priority_risks
+// entry, path_to_next_tier, behavioral_insights, actionable_feedback) are
+// mechanical and already fully specified by instructions #4/#5 and the
+// "Return this exact structure" schema block below — this is the one Part A
+// trim with real quality risk and it could not be verified against a real
+// Groq response in this sandbox (api.groq.com is egress-blocked).
 const SYNTHESIS_EXAMPLE = `
 [EXAMPLE — No Hire case (TECHNICAL_DEPTH 2, COMMUNICATION_SNR 2 from Call 1's scoring); follow this exact JSON structure and register]
 {
@@ -424,11 +434,6 @@ const SYNTHESIS_EXAMPLE = `
       "title": "Evidence gap",
       "description": "Makes claims about tools and decisions without the reasoning or specifics that would let an interviewer verify real understanding.",
       "related_signal_ids": ["TECHNICAL_DEPTH", "PROBLEM_SOLVING"]
-    },
-    {
-      "title": "Answer architecture",
-      "description": "Talks around the point before eventually reaching it, forcing the interviewer to extract the actual answer instead of receiving it directly.",
-      "related_signal_ids": ["COMMUNICATION_SNR", "STAR_ALIGNMENT", "RESULT_ORIENTATION"]
     }
   ],
   "model_answers": [
@@ -440,19 +445,7 @@ const SYNTHESIS_EXAMPLE = `
       "framework": "Answer → Reasoning → Trade-off",
       "model_excerpt": "We moved to Kubernetes specifically because our deploy cadence was blocked on manual VM provisioning — it was taking us 40 minutes per release. K8s let us define declarative deployments and roll back in under a minute. The trade-off was operational complexity: we had to invest two weeks in on-call runbooks before it paid off."
     }
-  ],
-  "path_to_next_tier": "One technically detailed answer — naming a real constraint and a trade-off, the way the model answer above does — would be enough to move Technical Depth off the floor and shift this from No Hire toward Borderline.",
-  "behavioral_insights": {
-    "star_adherence_score": 28,
-    "confidence_level": "Low",
-    "confidence_rationale": "Based on 5 answers, but 4 of them lacked enough specificity to confidently separate genuine gaps from nervousness or unfamiliarity with interview format.",
-    "red_flags": ["Circular answers with no resolution", "No quantifiable outcomes in any response"]
-  },
-  "actionable_feedback": {
-    "strengths": ["Willing to take ownership of past work"],
-    "growth_areas": ["Must learn to quantify results", "Needs to explain technical decisions with reasoning"],
-    "top_priority_fix": "Practice structuring your stories with a clear situation, the action you took, and a specific result — with at least one metric per story."
-  }
+  ]
 }
 `.trim();
 
@@ -461,27 +454,171 @@ export interface DebriefResult {
   usage: { input_tokens: number; output_tokens: number; model: string };
 }
 
+// ─── TPM rate-limit gating (see docs/plans/debrief-tpm-fix.md) ──────────────
+// Groq's TPM budget is a rolling 60s window, org-level, input+output, with
+// max_tokens counted up front as reserved capacity. Call 1 (scoring) and
+// call 2 (synthesis) fire back-to-back, so call 2 can land against an
+// already-exhausted window even though call 1 itself succeeded. These
+// helpers let generateDebrief make an informed go/wait/defer decision using
+// call 1's own rate-limit response headers instead of guessing.
+
+// Reserve this many tokens beyond estimateTokens' raw estimate before
+// deciding call 2 fits in the remaining TPM budget. estimateTokens is a
+// character-count approximation (±15%), not a real tokenizer count, and this
+// absorbs that error so a false "proceed" doesn't immediately 429.
+export const SYNTHESIS_TOKEN_SAFETY_MARGIN = 500;
+
+// How long we're willing to block a single request inline waiting for the
+// TPM window to reset before giving up and asking the client to retry.
+// Paired with `maxDuration` on the debrief route (see route.ts) — must stay
+// comfortably under that ceiling once the two Groq calls and the post-call
+// DB writes/email are accounted for.
+export const MAX_INLINE_WAIT_MS = 20_000;
+
+// Fallback wait hint returned to the client when we know call 2 won't fit
+// but don't know how long until the TPM window resets (x-ratelimit-reset-
+// tokens was absent or unparseable on an otherwise-informative response).
+// This is a display hint only — the client's own bounded single auto-retry
+// is what actually protects against a bad guess here, not this number.
+const DEFAULT_DEFER_RETRY_MS = 5_000;
+
+export class DebriefSynthesisDeferredError extends Error {
+  retryAfterMs: number;
+  constructor(retryAfterMs: number) {
+    super("Debrief synthesis deferred — TPM budget insufficient for call 2 within the inline wait window");
+    this.name = "DebriefSynthesisDeferredError";
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+// Character-count approximation of token count — NOT a real tokenizer.
+// Deliberately not adding a tokenizer dependency for this: the estimate only
+// needs to be right within a few hundred tokens to make a go/no-go call, and
+// SYNTHESIS_TOKEN_SAFETY_MARGIN absorbs the rest.
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 3.5);
+}
+
+// Groq's `x-ratelimit-reset-tokens` header is a Go-style duration string
+// ("7.66s", "120ms", "2m59.56s"), not a plain number — parseFloat() on that
+// silently yields 2 for "2m59.56s" (a 180s wait misread as 2ms). Sums every
+// (number, unit) pair found in the string; returns null if nothing matches
+// so callers can fail open instead of trusting a garbage 0.
+const DURATION_UNIT_MS: Record<string, number> = {
+  ns: 1e-6,
+  us: 1e-3,
+  "µs": 1e-3,
+  ms: 1,
+  s: 1_000,
+  m: 60_000,
+  h: 3_600_000,
+};
+const DURATION_TOKEN_RE = /(\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h)/g;
+
+export function parseGroqResetDuration(v: string | null | undefined): number | null {
+  if (!v || typeof v !== "string") return null;
+  let totalMs = 0;
+  let matchedAny = false;
+  // Reset lastIndex explicitly — DURATION_TOKEN_RE is a module-level /g
+  // regex, and reusing a stateful global regex across calls without
+  // resetting lastIndex is a classic source of intermittent, input-order-
+  // dependent bugs.
+  DURATION_TOKEN_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = DURATION_TOKEN_RE.exec(v)) !== null) {
+    matchedAny = true;
+    const value = parseFloat(match[1]);
+    const unitMs = DURATION_UNIT_MS[match[2]];
+    totalMs += value * unitMs;
+  }
+  if (!matchedAny) return null;
+  return Math.round(totalMs);
+}
+
+export type SynthesisGate =
+  | { action: "proceed" }
+  | { action: "wait"; ms: number }
+  | { action: "defer"; retryAfterMs: number };
+
+// The actual go/wait/defer decision for call 2, given call 1's rate-limit
+// headers (already parsed to numbers/ms upstream). remainingTokens === null
+// means the header was absent or unparseable — in that case we have no
+// signal at all and MUST fail open to "proceed" (today's behavior), never
+// block debrief generation over a missing header. Once we know we're short
+// on budget, resetMs === null means we know we're short but don't know for
+// how long — that's a "defer", not a silent proceed, since waiting an
+// unknown amount of time inline is worse than a client-side retry.
+export function decideSynthesisGate(input: {
+  remainingTokens: number | null;
+  resetMs: number | null;
+  needTokens: number;
+  maxInlineWaitMs: number;
+}): SynthesisGate {
+  const { remainingTokens, resetMs, needTokens, maxInlineWaitMs } = input;
+
+  if (remainingTokens === null) {
+    return { action: "proceed" };
+  }
+  if (remainingTokens >= needTokens) {
+    return { action: "proceed" };
+  }
+  if (resetMs !== null && resetMs <= maxInlineWaitMs) {
+    return { action: "wait", ms: resetMs + 250 };
+  }
+  return { action: "defer", retryAfterMs: resetMs ?? DEFAULT_DEFER_RETRY_MS };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseIntHeader(v: string | null | undefined): number | null {
+  if (v === null || v === undefined) return null;
+  const n = parseInt(v, 10);
+  return Number.isNaN(n) ? null : n;
+}
+
 // Shared call+error-handling wrapper for both debrief calls — the 413/rate-
 // limit/bad-request mapping and finish_reason==='length' check apply
 // identically to either. label distinguishes the two in logs.
+type CallHeaders = { remainingTokens: number | null; resetMs: number | null };
+
 async function runDebriefCompletion(
   systemPrompt: string,
   maxTokens: number,
   label: "scoring" | "synthesis"
-): Promise<{ raw: string; usage: { input_tokens: number; output_tokens: number } }> {
-  const completion = await (async () => {
+): Promise<{ raw: string; usage: { input_tokens: number; output_tokens: number }; headers: CallHeaders }> {
+  const { completion, headers } = await (async () => {
     try {
-      return await getClient().chat.completions.create({
-        model: MODEL,
-        max_tokens: maxTokens,
-        // See generateNextQuestion — gpt-oss-120b's default 'medium' reasoning
-        // effort burns hidden reasoning tokens out of the same max_tokens budget.
-        reasoning_effort: "low",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: "Generate the structured JSON." },
-        ],
-      });
+      const { data, response } = await getClient()
+        .chat.completions.create(
+          {
+            model: MODEL,
+            max_tokens: maxTokens,
+            // See generateNextQuestion — gpt-oss-120b's default 'medium' reasoning
+            // effort burns hidden reasoning tokens out of the same max_tokens budget.
+            reasoning_effort: "low",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: "Generate the structured JSON." },
+            ],
+          },
+          // The SDK's default maxRetries:2 with exponential backoff cannot
+          // succeed against a 60s TPM rolling window (it only honours
+          // retry-after when under 60s, otherwise falls back to a useless
+          // 0.5s/1s backoff) — it just burns 3 requests for a guaranteed
+          // eventual failure. Our own gating (decideSynthesisGate) replaces
+          // this for call 2; call 1 fails fast on its own errors.
+          { maxRetries: 0 }
+        )
+        .withResponse();
+      return {
+        completion: data,
+        headers: {
+          remainingTokens: parseIntHeader(response.headers.get("x-ratelimit-remaining-tokens")),
+          resetMs: parseGroqResetDuration(response.headers.get("x-ratelimit-reset-tokens")),
+        } as CallHeaders,
+      };
     } catch (apiErr) {
       // Confirmed in production: Groq returns HTTP 413 (not the 429 that
       // Groq.RateLimitError maps to) when a single request's token need
@@ -494,8 +631,19 @@ async function runDebriefCompletion(
         throw new Error("This interview's transcript is too large for the AI service's current capacity — please contact support.");
       }
       if (apiErr instanceof Groq.RateLimitError) {
-        console.error(`[generateDebrief:${label}] Groq rate limit:`, apiErr.status, apiErr.error);
-        throw new Error("The AI service is rate-limited right now — please wait a minute and try again.");
+        // apiErr.headers is a plain Record<string, string|null|undefined>
+        // (not a fetch Headers object — that's only true on the success
+        // path's `response`), so bracket access, not .get(). Attached to the
+        // thrown error for observability only; this doesn't change the
+        // user-facing message or status — call 1 hitting 429 is a different,
+        // pre-existing failure from the call-2-gating path this plan adds.
+        const resetMs = parseGroqResetDuration(apiErr.headers?.["x-ratelimit-reset-tokens"] ?? null);
+        console.error(`[generateDebrief:${label}] Groq rate limit:`, apiErr.status, apiErr.error, { resetMs });
+        const err = new Error("The AI service is rate-limited right now — please wait a minute and try again.") as Error & {
+          groqResetMs?: number | null;
+        };
+        err.groqResetMs = resetMs;
+        throw err;
       }
       if (apiErr instanceof Groq.BadRequestError) {
         console.error(`[generateDebrief:${label}] Groq rejected the request:`, apiErr.status, apiErr.error);
@@ -518,13 +666,23 @@ async function runDebriefCompletion(
   }
 
   const raw = choice.message.content?.trim() ?? "";
-  return {
-    raw,
-    usage: {
-      input_tokens: completion.usage?.prompt_tokens ?? 0,
-      output_tokens: completion.usage?.completion_tokens ?? 0,
-    },
+  const usage = {
+    input_tokens: completion.usage?.prompt_tokens ?? 0,
+    output_tokens: completion.usage?.completion_tokens ?? 0,
   };
+  // A6: per-call token usage logging. generateDebrief's returned `usage` is
+  // combined across both calls (persisted as-is to debriefs.tokens_used, an
+  // existing contract not changed here) — so today the per-call split is
+  // otherwise unrecoverable, and every max_tokens reservation in this file
+  // is an estimate nobody can check against reality. This is the instrument
+  // that makes the next token-budget iteration data-driven.
+  console.log(`[generateDebrief:${label}] token usage`, {
+    label,
+    prompt_tokens: usage.input_tokens,
+    completion_tokens: usage.output_tokens,
+  });
+
+  return { raw, usage, headers };
 }
 
 function parseDebriefJson<T>(raw: string, label: string): T {
@@ -538,13 +696,92 @@ function parseDebriefJson<T>(raw: string, label: string): T {
   }
 }
 
-type CoreScoring = Pick<DebriefReport, "metrics" | "skill_analysis" | "question_walkthrough">;
+export type CoreScoring = Pick<DebriefReport, "metrics" | "skill_analysis" | "question_walkthrough">;
 type Synthesis = Pick<
   DebriefReport,
   "priority_risks" | "model_answers" | "path_to_next_tier" | "behavioral_insights" | "actionable_feedback"
 > & { summary: { overall_impression: string } };
 
+// A3: select a reduced transcript for the synthesis call rather than paying
+// for the full transcript twice (~2,400 tokens duplicated on a typical
+// 8-question round). Synthesis only needs the transcript at all for one
+// reason — model_answers[].your_quote pulls a fresh verbatim quote that
+// doesn't have to already be in a signal's evidence_quotes — and
+// model_answers only ever targets weak (<=3) signals. Never fails closed:
+// any missing input (empty question_walkthrough, empty weakSignals) falls
+// back to the full transcript.
+export function buildSynthesisTranscript(qas: QAPair[], scoring: CoreScoring, maxAnswerChars: number): string {
+  const fullTranscript = qas
+    .map(
+      (qa) =>
+        `Q${qa.question_number}: ${qa.question}\nAnswer: ${
+          qa.answer ? qa.answer.slice(0, maxAnswerChars) : "(no answer provided)"
+        }`
+    )
+    .join("\n\n");
+
+  const weakSignals = new Set(
+    (scoring.skill_analysis ?? []).filter((s) => s.rating <= 3).map((s) => s.parameter_id)
+  );
+  const walkthrough = scoring.question_walkthrough ?? [];
+  if (weakSignals.size === 0 || walkthrough.length === 0) {
+    return fullTranscript;
+  }
+
+  const relevantQuestionNumbers = new Set(
+    walkthrough
+      .filter((entry) => (entry.signal_ids ?? []).some((id) => weakSignals.has(id)))
+      .map((entry) => entry.question_number)
+  );
+
+  // How many distinct weak signals each walkthrough entry touches — the
+  // relevance signal used to rank qualifying entries below. An entry not in
+  // the walkthrough (e.g. one of the floor-at-3 pad entries) counts as 0.
+  const weakSignalCountByQuestion = new Map<number, number>(
+    walkthrough.map((entry) => [
+      entry.question_number,
+      (entry.signal_ids ?? []).filter((id) => weakSignals.has(id)).length,
+    ])
+  );
+
+  let selected = qas.filter((qa) => relevantQuestionNumbers.has(qa.question_number));
+  // Floor at 3 — pad with whatever else is available, in original order, if
+  // the weak-signal match came back thinner than that.
+  if (selected.length < 3) {
+    const selectedNumbers = new Set(selected.map((qa) => qa.question_number));
+    for (const qa of qas) {
+      if (selected.length >= 3) break;
+      if (!selectedNumbers.has(qa.question_number)) selected.push(qa);
+    }
+  }
+  // Cap at 5 — ranked by relevance (how many distinct weak signals the
+  // entry's question_walkthrough touches) descending, so the strongest
+  // evidence survives the cap regardless of where it fell in the interview.
+  // Ties (including the 0-count pad entries above) break by ascending
+  // question index for deterministic, testable behavior.
+  selected = selected
+    .sort((a, b) => {
+      const countDiff =
+        (weakSignalCountByQuestion.get(b.question_number) ?? 0) -
+        (weakSignalCountByQuestion.get(a.question_number) ?? 0);
+      return countDiff !== 0 ? countDiff : a.question_number - b.question_number;
+    })
+    .slice(0, 5);
+
+  if (selected.length === 0) return fullTranscript;
+
+  return selected
+    .map(
+      (qa) =>
+        `Q${qa.question_number}: ${qa.question}\nAnswer: ${
+          qa.answer ? qa.answer.slice(0, maxAnswerChars) : "(no answer provided)"
+        }`
+    )
+    .join("\n\n");
+}
+
 export async function generateDebrief(
+  sessionId: string,
   session: SessionContext,
   qas: QAPair[]
 ): Promise<DebriefResult> {
@@ -554,6 +791,17 @@ export async function generateDebrief(
   // generous for a single spoken answer (roughly 700-800 words) while
   // bounding the worst case.
   const MAX_ANSWER_CHARS = 4000;
+  // A1: session.background is user-pasted resume text via the TMAY/setup
+  // flow — 4,000-8,000 chars is entirely normal and, until now, uncapped
+  // here despite being interpolated into BOTH calls' prompts (unlike
+  // jd_content and each answer, which already had caps). The single largest
+  // uncontrolled input in the whole debrief path — see plan §1 correction 4.
+  const MAX_BACKGROUND_CHARS = 1200;
+  // A2: the scoring task is "rate what the candidate said against BARS
+  // anchors," not "audit JD fit" — the first ~1,200 chars of a JD reliably
+  // carry role, seniority and core requirements; the rest is boilerplate.
+  const MAX_JD_CHARS = 1200;
+
   const qaText = qas
     .map(
       (qa) =>
@@ -564,7 +812,7 @@ export async function generateDebrief(
     .join("\n\n");
 
   const backgroundLine = session.background
-    ? `- Background: ${session.background}\n`
+    ? `- Background: ${session.background.slice(0, MAX_BACKGROUND_CHARS)}\n`
     : "";
 
   const companyContextBlock = session.company_stage
@@ -578,26 +826,26 @@ export async function generateDebrief(
 - Years of experience: ${session.yoe}
 ${backgroundLine}${companyContextBlock}
 Job Description (excerpt):
-${session.jd_content.slice(0, 3000)}
+${session.jd_content.slice(0, MAX_JD_CHARS)}
 
 Interview Q&As (the complete transcript):
 ${qaText}`;
 
-  // Synthesis doesn't need the JD text again — role/company/round_type plus
-  // the transcript (for fresh quotes) and Call 1's scoring already give it
-  // enough domain grounding, and the JD excerpt is the single largest
-  // reusable chunk of sessionHeader worth not paying for twice.
-  const synthesisHeader = `Session details:
-- Role: ${session.role}
-- Company: ${session.company}
-- Round type: ${session.round_type}
-- Years of experience: ${session.yoe}
-${backgroundLine}${companyContextBlock}
-Interview Q&As (the complete transcript):
-${qaText}`;
+  // ── Call 1 (or a warm cache hit) — raw scoring read directly off the transcript ──
+  const cachedScoring = getCachedScoring(sessionId);
+  let scoring: CoreScoring;
+  let scoringUsage = { input_tokens: 0, output_tokens: 0 };
+  // A cache hit means this request never made call 1 itself, so there is no
+  // fresh rate-limit signal to gate on — null/null correctly fails
+  // decideSynthesisGate open to "proceed" below, which is the whole point:
+  // a warm-cache retry should just make call 2 and finish.
+  let callOneHeaders: CallHeaders = { remainingTokens: null, resetMs: null };
 
-  // ── Call 1: raw scoring — evidence read directly off the transcript ──────
-  const scoringPrompt = `You are a senior hiring panel evaluating a completed mock interview. Your job is to produce an evidence-first structured assessment using BARS (Behaviorally Anchored Rating Scales).
+  if (cachedScoring) {
+    scoring = cachedScoring;
+  } else {
+    // ── Call 1: raw scoring — evidence read directly off the transcript ──────
+    const scoringPrompt = `You are a senior hiring panel evaluating a completed mock interview. Your job is to produce an evidence-first structured assessment using BARS (Behaviorally Anchored Rating Scales).
 
 ${sessionHeader}
 
@@ -641,23 +889,44 @@ Return this exact structure:
 
 Include all 8 signals in skill_analysis in this order: TECHNICAL_DEPTH, PROBLEM_SOLVING, STAR_ALIGNMENT, COMMUNICATION_SNR, RESULT_ORIENTATION, OWNERSHIP_ETHICS, ADAPTABILITY_GROWTH, EDGE_CASE_MASTERY.`;
 
-  const scoringResult = await runDebriefCompletion(
-    scoringPrompt,
-    // Measured against a realistic 8-signal + 8-question_walkthrough JSON
-    // payload: ~1600 tokens actually needed. 2500 leaves a real margin
-    // without repeating the old mistake of reserving far more than the
-    // output will ever use — on an 8000 TPM tier, every reserved token not
-    // actually used is TPM budget taken away from the (variable-length,
-    // unavoidable) transcript.
-    2500,
-    "scoring"
-  );
-  const scoring = parseDebriefJson<CoreScoring>(scoringResult.raw, "scoring");
-  if (!Array.isArray(scoring.skill_analysis) || scoring.skill_analysis.length === 0) {
-    console.error("[generateDebrief:scoring] response parsed but missing skill_analysis:", JSON.stringify(scoring).slice(0, 2000));
-    throw new Error("The report came back incomplete — please try again.");
+    const scoringResult = await runDebriefCompletion(
+      scoringPrompt,
+      // Measured against a realistic 8-signal + 8-question_walkthrough JSON
+      // payload: ~1600 tokens actually needed. 2500 leaves a real margin
+      // without repeating the old mistake of reserving far more than the
+      // output will ever use — on an 8000 TPM tier, every reserved token not
+      // actually used is TPM budget taken away from the (variable-length,
+      // unavoidable) transcript.
+      2500,
+      "scoring"
+    );
+    const parsedScoring = parseDebriefJson<CoreScoring>(scoringResult.raw, "scoring");
+    if (!Array.isArray(parsedScoring.skill_analysis) || parsedScoring.skill_analysis.length === 0) {
+      console.error("[generateDebrief:scoring] response parsed but missing skill_analysis:", JSON.stringify(parsedScoring).slice(0, 2000));
+      throw new Error("The report came back incomplete — please try again.");
+    }
+    parsedScoring.question_walkthrough = parsedScoring.question_walkthrough ?? [];
+
+    scoring = parsedScoring;
+    scoringUsage = scoringResult.usage;
+    callOneHeaders = scoringResult.headers;
   }
-  scoring.question_walkthrough = scoring.question_walkthrough ?? [];
+
+  // A3: reduced, weak-signal-filtered transcript for synthesis — see
+  // buildSynthesisTranscript's own comment for the selection algorithm.
+  const synthesisTranscript = buildSynthesisTranscript(qas, scoring, MAX_ANSWER_CHARS);
+  // Synthesis doesn't need the JD text again — role/company/round_type plus
+  // the transcript (for fresh quotes) and Call 1's scoring already give it
+  // enough domain grounding, and the JD excerpt is the single largest
+  // reusable chunk of sessionHeader worth not paying for twice.
+  const synthesisHeader = `Session details:
+- Role: ${session.role}
+- Company: ${session.company}
+- Round type: ${session.round_type}
+- Years of experience: ${session.yoe}
+${backgroundLine}${companyContextBlock}
+Interview Q&As (the complete transcript):
+${synthesisTranscript}`;
 
   // ── Call 2: synthesis — reasons about Call 1's scoring, not just the transcript ──
   const synthesisPrompt = `You are the same senior hiring panel, now synthesizing your own scoring below into the parts of the report that reason about root causes and next steps — not re-scoring.
@@ -713,15 +982,44 @@ Return this exact structure:
   }
 }`;
 
-  const synthesisResult = await runDebriefCompletion(
-    synthesisPrompt,
-    // Measured against a realistic 3-risk + 3-model_answer payload (the
-    // heaviest realistic case — model_excerpt is the single biggest field):
-    // ~850 tokens actually needed. 1800 leaves real margin without
-    // over-reserving — same reasoning as the scoring call's max_tokens.
-    1800,
-    "synthesis"
-  );
+  // Measured against a realistic 3-risk + 3-model_answer payload (the
+  // heaviest realistic case — model_excerpt is the single biggest field):
+  // ~850 tokens actually needed. 1800 leaves real margin without
+  // over-reserving — same reasoning as the scoring call's max_tokens. (A7:
+  // deliberately not tightened — wait for real per-call numbers from A6.)
+  const SYNTHESIS_MAX_TOKENS = 1800;
+
+  // B3: gate call 2 on call 1's own rate-limit headers (or fail open if this
+  // was a warm-cache hit and there are none). needTokens is the synthesis
+  // prompt's estimated size plus its reserved max_tokens plus a safety
+  // margin — the whole point is to know call 2 will fit BEFORE spending it.
+  const needTokens =
+    estimateTokens(synthesisPrompt) + SYNTHESIS_MAX_TOKENS + SYNTHESIS_TOKEN_SAFETY_MARGIN;
+  const gate = decideSynthesisGate({
+    remainingTokens: callOneHeaders.remainingTokens,
+    resetMs: callOneHeaders.resetMs,
+    needTokens,
+    maxInlineWaitMs: MAX_INLINE_WAIT_MS,
+  });
+
+  if (gate.action === "wait") {
+    console.log(`[generateDebrief:synthesis] TPM budget short — waiting ${gate.ms}ms inline before call 2`);
+    await sleep(gate.ms);
+  } else if (gate.action === "defer") {
+    // Stash call 1's scoring so a client retry (post-503) can skip call 1
+    // entirely — see lib/debrief-cache.ts. This does not guarantee a
+    // retry-only-call-2, but it makes it work most of the time with zero
+    // schema change (plan §5).
+    setCachedScoring(sessionId, scoring);
+    console.warn(
+      `[generateDebrief:synthesis] TPM budget insufficient within ${MAX_INLINE_WAIT_MS}ms inline wait — deferring, retryAfterMs=${gate.retryAfterMs}`
+    );
+    throw new DebriefSynthesisDeferredError(gate.retryAfterMs);
+  }
+
+  const synthesisResult = await runDebriefCompletion(synthesisPrompt, SYNTHESIS_MAX_TOKENS, "synthesis");
+  // Call 2 succeeded — the cached scoring (if any) has done its job.
+  clearCachedScoring(sessionId);
   const synthesis = parseDebriefJson<Synthesis>(synthesisResult.raw, "synthesis");
   if (!synthesis.summary || !synthesis.behavioral_insights) {
     console.error("[generateDebrief:synthesis] response parsed but missing required fields:", JSON.stringify(synthesis).slice(0, 2000));
@@ -769,8 +1067,12 @@ Return this exact structure:
   }
 
   const usage = {
-    input_tokens: scoringResult.usage.input_tokens + synthesisResult.usage.input_tokens,
-    output_tokens: scoringResult.usage.output_tokens + synthesisResult.usage.output_tokens,
+    // scoringUsage is {0, 0} on a warm-cache hit (no call 1 this request) —
+    // an intentional, honest undercount: debriefs.tokens_used is meant to
+    // reflect what THIS request actually spent, and a cache hit spent zero
+    // scoring tokens.
+    input_tokens: scoringUsage.input_tokens + synthesisResult.usage.input_tokens,
+    output_tokens: scoringUsage.output_tokens + synthesisResult.usage.output_tokens,
     model: MODEL,
   };
 
