@@ -7,6 +7,7 @@ import { sendDebriefEmail } from "@/lib/email";
 import { calculateNormalizedScore } from "@/lib/rubric-researched";
 import { checkFatalFlag, applyFatalFlag } from "@/lib/fatal-flag";
 import { track, stableInsertId } from "@/lib/analytics";
+import { getTotalQuestions } from "@/lib/round-types";
 
 export async function POST(req: NextRequest) {
   // Hoisted out of the try block so the catch block below can attribute a
@@ -45,27 +46,12 @@ export async function POST(req: NextRequest) {
     `;
 
     // Round-type → total question count, shared by the completeness gate below
-    // and the Fatal Flag check further down.
-    const QUESTIONS_BY_ROUND: Record<string, number> = {
-      technical_screen: 5, technical_deep_dive: 8, system_design: 6,
-      behavioural: 7, final: 8, hr_screen: 5, case_study: 5,
-      // legacy keys for old sessions
-      screening: 5, technical: 8,
-      // Hidden 1-question test shortcut (app/api/dev/quick-test) — real
-      // round_type, not a bypass hack, so it's explicit and traceable
-      // through this exact same map rather than a separate gate.
-      quick_test: 1,
-    };
-    const normalizedRound = (() => {
-      const map: Record<string, string> = {
-        "technical screen": "technical_screen", "technical deep dive": "technical_deep_dive",
-        "system design": "system_design", "behavioral": "behavioural",
-        "final round": "final", "hr screen": "hr_screen", "case study": "case_study",
-        "screening": "screening", "technical": "technical",
-      };
-      return map[(session.round_type ?? "").toLowerCase()] ?? session.round_type?.toLowerCase() ?? "technical_screen";
-    })();
-    const totalQuestions = QUESTIONS_BY_ROUND[normalizedRound] ?? 7;
+    // and the Fatal Flag check further down. Resolved via the shared
+    // lib/round-types module — see that file's header comment for why this
+    // used to be a separate, disagreeing map from /api/interview/question's
+    // (that inconsistency is what this shared module removes; the two
+    // routes now always resolve the same round_type to the same count).
+    const totalQuestions = getTotalQuestions(session.round_type);
 
     // Completeness gate: any skipped (unanswered) question blocks report
     // generation entirely — zero tolerance, distinct from Fatal Flag's
@@ -153,9 +139,15 @@ export async function POST(req: NextRequest) {
     // applyFatalFlag never touches overall_impression — that field is user-facing
     // (rendered as the interviewer's first-person verdict quote) and must never
     // carry an internal bracketed marker prefix.
+    // Math.max guard: for every current-UI session the completeness gate
+    // above already guarantees qas.length >= totalQuestions (generation
+    // stops exactly at totalQuestions), so this is a no-op in that path. It
+    // only protects a legacy row that happens to hold more QA pairs than
+    // the newly-resolved totalQuestions from being scored against a
+    // too-small denominator and getting an inflated (and wrong) skip rate.
     const fatalFlag = checkFatalFlag(
       qas.map((qa) => ({ question_number: qa.question_number, answer: qa.answer })),
-      totalQuestions
+      Math.max(totalQuestions, qas.length)
     );
     const fatalFlagResult = applyFatalFlag(
       hireProbability,
@@ -211,9 +203,10 @@ export async function POST(req: NextRequest) {
     // snake_cased for the analytics property per Mixpanel's enum convention;
     // the Title Case UI copy in debrief.summary.recommendation is untouched.
     // interview_depth reuses totalQuestions (already round-type-normalized
-    // above) rather than a fresh lookup — see note below about a real,
-    // separate inconsistency this surfaced between this file's and
-    // /api/interview/question's round-type normalization maps.
+    // above via the shared lib/round-types module) rather than a fresh
+    // lookup — this file and /api/interview/question now always agree on
+    // round-type normalization and question counts, so there's no longer a
+    // risk of the two disagreeing here.
     track("session_completed", userId ?? session.user_email, {
       round_type: session.round_type,
       recommendation: debrief.summary.recommendation.toLowerCase().replace(/\s+/g, "_"),
