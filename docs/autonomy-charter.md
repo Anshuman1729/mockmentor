@@ -33,7 +33,7 @@ Chief of Staff sits between Anshuman and every department head — heads report 
 | Tech | 0 — now | Planner, Coder, Tester, Debugger, Reviewer |
 | Legal | 1 — now | Director of Compliance, Compliance Associate, Senior Compliance Counsel, Specialist Counsel |
 | Analytics | 1 — now | Director of Analytics, Junior Analyst, Senior Analyst, Data Engineer |
-| Product | 2 | VP Product, SPM, PM, APM |
+| Product | 2 — now | VP Product, SPM, PM, APM |
 | Marketing | 3 (gated on Monetisation shipping) | Marketing Director, Analyst, Social Media Manager, Outreach Manager, Paid Ads Manager |
 | Sales — Institutional | 3 (gated on Monetisation shipping) | Sales Head, Institutional BD Associate, Institutional Outreach Manager, Qualifier |
 | Lifecycle | 4 (follows Phase 3) | VP of Monetization, Lifecycle Manager, Lifecycle Associate |
@@ -54,6 +54,23 @@ Director of Compliance                    Director of Analytics
 
 Build order (the sequence these seats were actually built in, distinct from the reporting chain above): Legal — Compliance Associate → Specialist Counsel → Senior Compliance Counsel. Analytics — Junior Analyst → Data Engineer → Senior Analyst.
 
+**Product is not flat either, for its own reason — approved as proposed, not overridden.** VP Product's hiring spec (`ops/product/hiring-spec.md`) proposed a partial chain rather than defaulting to the flat precedent, and Anshuman approved it exactly as written:
+
+```
+VP Product
+├── SPM  (direct report)
+└── PM   (direct report)
+      └── APM  (reports to PM, not VP Product)
+```
+
+- **PM** owns single-feature ownership — the scope VP Product's own mandate explicitly excludes itself from ("coherence... not any single feature"). Under a flat structure nothing would force feature-level work through a coherence check before it reaches VP Product; a chain closes that gap.
+- **APM** reports to PM, not VP Product: its output (competitive research, digest reads, mechanical cross-checking) is input to a PM-owned spec, not a coherence-level artifact ready for VP Product's read — the same way a raw finding needs a feature-owner's edit pass first.
+- **SPM** is a direct report to VP Product, not a link in a PM→SPM→VP Product ladder — it's a second, senior report that does a first coherence pass across (eventually) multiple PMs' specs before VP Product's own roadmap-level read. Closer to "VP Product's deputy for coherence" than "PM's manager."
+
+Access tiers, also approved as proposed: PM is Write (scoped to `ops/product/specs/`), APM is Read-Only, SPM is Write (scoped to `ops/product/`). None Full-Auto.
+
+Build order (approved as proposed): **PM → APM → SPM** — see `ops/product/hiring-spec.md`'s sequencing section for the reasoning (PM closes the highest-priority gap immediately; APM's output has nowhere to go until PM exists; SPM is only load-bearing once there's more than one PM-track item in flight).
+
 ## Build sequence
 
 **Phase 0 (built this session):** Chief of Staff + all 7 other department heads, temporarily elevated from Read-Only to Write since none has reports yet — each head's Phase 0 job is real first-pass work in its domain *plus* a hiring spec for its own team. Tech is the exception: Planner is Write by design (not elevated), and Reviewer ships alongside it as a fixed paired control rather than "a team lead who builds reports," since Planner's output needs a gate from day one.
@@ -68,6 +85,6 @@ Full per-seat mandate, model, and skill assignment lives in `.claude/agents/*.md
 
 Two separate provisioning axes, deliberately kept apart: a **Skill** is a playbook/reference the agent can invoke (via the `Skill` tool); an **MCP connector** is live access to an external system (Gmail, Stripe, HubSpot, etc.). Marketplace plugins usually bundle both together — installing one for its skill does not mean wiring its MCP servers into any subagent's tool list. No automated seat gets real send-email, real ad-spend, or real payment access. Only the interactive session Anshuman is driving gets that, ever.
 
-Currently referenced built-in skills: `internal-comms` (Chief of Staff), `code-review` + `security-review` (Reviewer), `product-design-principles` (VP Product), `humanizer` (Marketing Director), `dataviz` (Director of Analytics).
+Currently referenced built-in skills: `internal-comms` (Chief of Staff), `code-review` + `security-review` (Reviewer), `product-design-principles` (all of Product — VP Product, SPM, PM, APM), `humanizer` (Marketing Director), `dataviz` (Director of Analytics).
 
 Marketplace plugins identified but not installed (`legal`, `sales`, `marketing`, `operations`, `data`, `small-business` — all in the `knowledge-work-plugins` marketplace): referenced by name in the relevant agent files as closer-fit skills to adopt once installed. No India-specific DPDP/compliance skill exists on the marketplace as of this writing — Director of Compliance's India-law grounding is this repo's own work, not something bought off the shelf.
