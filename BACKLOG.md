@@ -424,8 +424,8 @@ debrief through the actual production pipeline.
   in the URL (which can leak via browser history/referrer headers/logs). Set to
   `khare.anshuman47@gmail.com` in `.env.local`; **still needed**: the same var added to Vercel.
 - **New round_type**: `quick_test` → 1 question, added as a real, explicit entry in
-  `app/api/interview/debrief/route.ts`'s `QUESTIONS_BY_ROUND` (not a bypass hack around the completeness
-  gate — same map, same code path).
+  `lib/round-types.ts`'s `QUESTIONS_BY_ROUND` (not a bypass hack around the completeness gate — same
+  map, same code path, shared by both the question and debrief routes).
 - **Reuses the real pipeline, not a parallel one**: `app/api/dev/quick-test/route.ts` inserts 1 session +
   1 `qa_pairs` row directly, then internally calls `POST /api/interview/debrief` (forwarding cookies for
   auth) — same Groq calls, same error handling, same `debrief_generation_failed` tracking as a real user

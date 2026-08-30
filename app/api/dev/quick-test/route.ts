@@ -17,8 +17,8 @@ const DEFAULT_QUESTION =
 // all (fails closed if that env var isn't set). round_type 'quick_test'
 // keeps these sessions out of GET /api/sessions, /api/sessions/analytics,
 // and the cross-session "history" trend data, so repeated test runs never
-// pollute real account analytics — see app/api/interview/debrief/route.ts's
-// QUESTIONS_BY_ROUND for the matching completeness-gate entry.
+// pollute real account analytics — see lib/round-types.ts's QUESTIONS_BY_ROUND
+// for the matching completeness-gate entry.
 export async function POST(req: NextRequest) {
   try {
     const { userId } = await auth();

@@ -13,7 +13,7 @@ const DEBRIEF_MESSAGES = [
 // Full-screen debrief-generation loading state. Shared by InterviewRoom
 // (the real generating-debrief step) and /dev/loading (a DB-free preview
 // of the same screen) so the two can't drift out of sync.
-export default function DebriefLoadingScreen() {
+export default function DebriefLoadingScreen({ statusNote }: { statusNote?: string }) {
   const [idx, setIdx] = useState(0);
   const [visible, setVisible] = useState(true);
 
@@ -55,6 +55,14 @@ export default function DebriefLoadingScreen() {
           />
         ))}
       </div>
+
+      {/* Optional secondary status line — used for the one-time "taking a
+          little longer than usual" note on a deferred-then-retried debrief.
+          Kept generic on purpose: no LLM/rate-limit internals in user-facing
+          copy (see docs/plans/debrief-tpm-fix.md §B5). */}
+      {statusNote && (
+        <p className="text-xs text-gray-500 max-w-xs text-center">{statusNote}</p>
+      )}
     </div>
   );
 }

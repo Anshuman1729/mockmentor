@@ -64,3 +64,40 @@ export function checkFatalFlag(
 
   return { triggered, skipCount, totalQuestions, skipRate, zeroSignalQuestionNumbers };
 }
+
+export interface FatalFlagInternalNote {
+  triggered: boolean;
+  skip_count: number;
+  total_questions: number;
+  skip_rate: number;
+  zero_signal_question_numbers: number[];
+}
+
+// Matches DebriefReport["summary"]["recommendation"] in lib/groq.ts — not imported
+// from there to avoid a circular dependency (groq.ts doesn't import this file, but
+// keeping this file dependency-free for the standalone unit tests is preferable).
+export type Recommendation = "Strong Hire" | "Hire" | "Borderline" | "No Hire";
+
+// Internal-only: this return value feeds debriefs.reasoning (never returned to the client).
+// Never wire any of it into a user-facing string — see CLAUDE.md's non-negotiable rules.
+export function applyFatalFlag(
+  hireProbability: number,
+  recommendation: Recommendation,
+  result: FatalFlagResult
+): { hireProbability: number; recommendation: Recommendation; internalNote: FatalFlagInternalNote } {
+  const internalNote: FatalFlagInternalNote = {
+    triggered: result.triggered,
+    skip_count: result.skipCount,
+    total_questions: result.totalQuestions,
+    skip_rate: result.skipRate,
+    zero_signal_question_numbers: result.zeroSignalQuestionNumbers,
+  };
+  if (!result.triggered) {
+    return { hireProbability, recommendation, internalNote };
+  }
+  return {
+    hireProbability: Math.min(hireProbability, 30),
+    recommendation: "No Hire",
+    internalNote,
+  };
+}

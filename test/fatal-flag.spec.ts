@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { checkFatalFlag, isZeroSignal } from '../lib/fatal-flag';
+import { checkFatalFlag, isZeroSignal, applyFatalFlag } from '../lib/fatal-flag';
 
 describe('fatal-flag', () => {
   it('detects zero-signal answers', () => {
@@ -32,5 +32,61 @@ describe('fatal-flag', () => {
     const result = checkFatalFlag(qas, 4);
     expect(result.triggered).toBe(false);
     expect(result.skipRate).toBeCloseTo(1/4, 2);
+  });
+});
+
+describe('applyFatalFlag', () => {
+  it('caps a high score down to 30 and forces recommendation to "No Hire" when triggered', () => {
+    const result = applyFatalFlag(78, 'Strong Hire', {
+      triggered: true,
+      skipCount: 3,
+      totalQuestions: 5,
+      skipRate: 0.6,
+      zeroSignalQuestionNumbers: [1, 2, 3],
+    });
+    expect(result.hireProbability).toBe(30);
+    expect(result.recommendation).toBe('No Hire');
+  });
+
+  it('does not raise a score already below 30 when triggered (Math.min, not an overwrite)', () => {
+    const result = applyFatalFlag(12, 'No Hire', {
+      triggered: true,
+      skipCount: 4,
+      totalQuestions: 5,
+      skipRate: 0.8,
+      zeroSignalQuestionNumbers: [1, 2, 3, 4],
+    });
+    expect(result.hireProbability).toBe(12);
+    expect(result.recommendation).toBe('No Hire');
+  });
+
+  it('passes hireProbability and recommendation through unchanged when not triggered', () => {
+    const result = applyFatalFlag(72, 'Hire', {
+      triggered: false,
+      skipCount: 1,
+      totalQuestions: 5,
+      skipRate: 0.2,
+      zeroSignalQuestionNumbers: [2],
+    });
+    expect(result.hireProbability).toBe(72);
+    expect(result.recommendation).toBe('Hire');
+  });
+
+  it('carries skip_rate/skip_count/zero_signal_question_numbers into internalNote, with no "FATAL FLAG" marker anywhere', () => {
+    const result = applyFatalFlag(78, 'Strong Hire', {
+      triggered: true,
+      skipCount: 3,
+      totalQuestions: 5,
+      skipRate: 0.6,
+      zeroSignalQuestionNumbers: [1, 2, 3],
+    });
+    expect(result.internalNote).toEqual({
+      triggered: true,
+      skip_count: 3,
+      total_questions: 5,
+      skip_rate: 0.6,
+      zero_signal_question_numbers: [1, 2, 3],
+    });
+    expect(JSON.stringify(result.internalNote)).not.toContain('FATAL FLAG');
   });
 });
