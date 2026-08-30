@@ -61,7 +61,7 @@ npm run test:coverage        # vitest with coverage
 - `scripts/audit-gaps/lighthouse-check.mjs` and `axe-core-check.mjs` exist for perf/a11y checks against a running dev server — not wired into CI yet, run manually
 
 ## DB Schema Notes
-- `debriefs` columns: `debrief_data` (JSONB, user-facing), `reasoning` (JSONB, internal), `actual_outcome` (TEXT), `company_type` (TEXT), `tokens_used` (JSONB: `{input_tokens, output_tokens, model}`)
+- `debriefs` columns: `debrief_data` (JSONB, user-facing), `reasoning` (JSONB, internal — now `{ signals, fatal_flag }`, was a bare array), `actual_outcome` (TEXT), `company_type` (TEXT), `tokens_used` (JSONB: `{input_tokens, output_tokens, model}`)
 - `qa_pairs` columns: `answer_duration_sec` (FLOAT), `seed_question_id` (UUID FK→question_bank — column exists, not yet populated)
 - `sessions` columns: `candidate_questions_asked` (INTEGER DEFAULT 0), `company_stage` (TEXT)
 - **Live tables** (Intelligence DB — created `feat/intelligence-db-fatal-flag`):
