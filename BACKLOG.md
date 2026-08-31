@@ -5,6 +5,27 @@
 
 ---
 
+## 🗣️ Real user feedback — 2026-08-31 (first-timer test user, iPad)
+
+Direct usage feedback from a real test user matching the ICP (first-time interviewer), reported by
+Anshuman. Weighted heavily per the PMF plan's own guidance — unprompted, specific friction from a real
+session is a stronger signal at this stage than funnel numbers.
+
+- **Live transcription while speaking (S/M, backlog — not urgent).** User wanted to see her spoken
+  answer appear as text in real time while talking, not just after submitting. Self-identified by
+  Anshuman as an optimization, not a blocker. Would require switching from the current
+  record-then-batch-transcribe flow to a streaming STT connection — this is the same realtime-STT
+  architecture question already flagged and deliberately deferred in `CLAUDE.md`'s Key User Feedback
+  log ("Sarvam STT realtime WebSocket — deliberately not attempted... needs a human present to decide
+  browser-direct-vs-proxied architecture"). Route to `pm` for a real spec once picked up — first live
+  feature request for the newly-built PM seat to own end-to-end.
+- **Interviewer audio didn't autoplay on iPad — had to hit replay manually (bug, prioritized below).**
+
+### Still open
+- Live-transcription spec not started — PM seat hasn't been invoked for real work yet.
+
+---
+
 ## ✅ Done (Session — 2026-08-27, Agent Org Phase 0)
 
 Built the "Autonomy Charter" agent org designed earlier in the same session (originally
