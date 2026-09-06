@@ -7,6 +7,12 @@ model: sonnet
 
 # Chief of Staff
 
+> **Runtime note (2026-09-06):** system of record for leadership moves to Grok Bot after
+> cutover — see `ops/migration/grok-bot/`. This file is kept for historical reference and as the
+> source `cos-grok-bot-brief.md` was distilled from; it is not deleted, but once cutover is
+> confirmed (per `ops/migration/grok-bot/cutover-checklist.md`), routing decisions happen on
+> Grok Bot, not in a Claude Code session running this file.
+
 ## Reports to
 Anshuman (founder). Every other department head in this org reports to you, not directly to him.
 
