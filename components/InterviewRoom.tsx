@@ -37,7 +37,7 @@ interface SessionInfo {
 
 export default function InterviewRoom({ sessionId }: { sessionId: string }) {
   const router = useRouter();
-  const { speak, cancel: cancelTTS, isSpeaking, rate, cycleRate, muted, toggleMute, analyserRef: ttsAnalyserRef } = useTTS();
+  const { speak, cancel: cancelTTS, unlockAudio, isSpeaking, rate, cycleRate, muted, toggleMute, analyserRef: ttsAnalyserRef } = useTTS();
   const {
     start: startSTT,
     stop: stopSTT,
@@ -52,6 +52,11 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
   const { startRecording, stopRecording, discardRecording, isRecording, analyserRef: micAnalyserRef } = useAudioRecorder();
   const idleAnalyserRef = useRef<AnalyserNode | null>(null);
 
+  // Gates camera/mic/TTS init behind a real tap — required so audio.play()
+  // inside the later async speak() calls is allowed on iPadOS/iOS Safari,
+  // which otherwise silently blocks the first interviewer line until the
+  // user manually hits Replay (see BACKLOG.md, 2026-08-31 user report).
+  const [started, setStarted] = useState(false);
   const [roomState, setRoomState] = useState<RoomState>("init");
   const [current, setCurrent] = useState<QuestionState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -88,16 +93,18 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
 
   // ── Fullscreen ──────────────────────────────────────────────────────────────
   useEffect(() => {
+    if (!started) return;
     document.documentElement.requestFullscreen?.().catch(() => {/* not critical */});
     return () => {
       if (document.fullscreenElement) {
         document.exitFullscreen?.().catch(() => {});
       }
     };
-  }, []);
+  }, [started]);
 
   // ── Camera ───────────────────────────────────────────────────────────────────
   useEffect(() => {
+    if (!started) return;
     let mounted = true;
     navigator.mediaDevices
       .getUserMedia({ video: true, audio: false })
@@ -112,7 +119,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
       mounted = false;
       streamRef.current?.getTracks().forEach((t) => t.stop());
     };
-  }, []);
+  }, [started]);
 
   // ── STT safety net ───────────────────────────────────────────────────────────
   // Primary STT start happens via explicit startSTT() calls in fetchNextQuestion,
@@ -241,8 +248,12 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     await startRecording();
   }, [sessionId, speak, resetSTT, startSTT, startRecording, generateDebrief]);
 
-  // Load session on mount — show TMAY step if no background, else load first question
+  // Load session once the user has tapped in — show TMAY step if no
+  // background, else load first question. Gated on `started` (see above)
+  // rather than running on mount, since speak() here must come after audio
+  // has been unlocked by a real gesture.
   useEffect(() => {
+    if (!started) return;
     let cancelled = false;
     async function initRoom() {
       await new Promise((r) => setTimeout(r, 300));
@@ -279,7 +290,7 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     initRoom();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [started]);
 
   // ── Submit ───────────────────────────────────────────────────────────────────
   async function handleSubmit() {
@@ -455,6 +466,37 @@ export default function InterviewRoom({ sessionId }: { sessionId: string }) {
     (sttSupported
       ? hasListenedLong || (transcript + interimTranscript).trim().length > 0
       : fallbackText.trim().length > 0);
+
+  // ── Start gate ────────────────────────────────────────────────────────────────
+  // A real tap here unlocks audio (see useTTS.unlockAudio) before camera/mic
+  // permissions or the interviewer's first line are requested, so playback
+  // isn't silently blocked on iPadOS/iOS Safari.
+  if (!started) {
+    return (
+      <div className="fixed inset-0 bg-gray-950 flex flex-col items-center justify-center text-white z-50 select-none px-4 text-center gap-6">
+        <div className="relative flex items-center justify-center w-24 h-24">
+          <VoiceOrb analyserRef={idleAnalyserRef} variant="listening" size={96} />
+        </div>
+        <div className="space-y-2 max-w-sm">
+          <p className="text-xs font-semibold text-gray-400 tracking-widest uppercase">AI Interviewer</p>
+          <p className="text-lg text-white/90 font-light">Ready when you are.</p>
+          <p className="text-xs text-white/40">
+            This will ask for camera and microphone access — this is just practice, nothing is recorded or sent anywhere.
+          </p>
+        </div>
+        <Button
+          size="lg"
+          onClick={() => {
+            unlockAudio();
+            setStarted(true);
+          }}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-8 h-[48px]"
+        >
+          Start interview →
+        </Button>
+      </div>
+    );
+  }
 
   // ── TMAY step ─────────────────────────────────────────────────────────────────
   if (roomState === "tmay") {

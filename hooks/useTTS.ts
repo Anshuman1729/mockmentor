@@ -17,6 +17,15 @@ function readStoredMuted(): boolean {
   return window.localStorage.getItem(MUTED_STORAGE_KEY) === "1";
 }
 
+// Minimal silent WAV (80 samples @ 8kHz, 8-bit PCM mono) — played synchronously
+// from a real user tap to satisfy Safari/iPadOS's per-page autoplay gesture
+// requirement. Every subsequent speak() call happens after an async fetch,
+// which on iPadOS is *not* treated as gesture-initiated on its own — without
+// this priming, audio.play() silently rejects and the interviewer never
+// speaks until the user manually hits Replay.
+const SILENT_WAV =
+  "data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==";
+
 export function useTTS() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [rate, setRateState] = useState<number>(readStoredRate);
@@ -64,6 +73,24 @@ export function useTTS() {
   const cancel = useCallback(() => {
     stopPlayback();
   }, [stopPlayback]);
+
+  // Call synchronously from a real tap/click handler (before any await) to
+  // unlock audio autoplay for the rest of the page session — must run inside
+  // the same event-handler stack as the gesture, not after any async work.
+  const unlockAudio = useCallback(() => {
+    try {
+      const ctx = getAudioContext();
+      if (ctx?.state === "suspended") ctx.resume().catch(() => {});
+    } catch {
+      /* best-effort */
+    }
+    try {
+      const primer = new Audio(SILENT_WAV);
+      primer.play().catch(() => {});
+    } catch {
+      /* best-effort */
+    }
+  }, []);
 
   const cycleRate = useCallback(() => {
     const i = RATE_OPTIONS.indexOf(rateRef.current as (typeof RATE_OPTIONS)[number]);
@@ -168,5 +195,5 @@ export function useTTS() {
     [stopPlayback]
   );
 
-  return { speak, cancel, isSpeaking, rate, cycleRate, muted, toggleMute, analyserRef };
+  return { speak, cancel, unlockAudio, isSpeaking, rate, cycleRate, muted, toggleMute, analyserRef };
 }

@@ -5,6 +5,45 @@
 
 ---
 
+## 🗣️ Real user feedback — 2026-08-31 (first-timer test user, iPad)
+
+Direct usage feedback from a real test user matching the ICP (first-time interviewer), reported by
+Anshuman. Weighted heavily per the PMF plan's own guidance — unprompted, specific friction from a real
+session is a stronger signal at this stage than funnel numbers.
+
+- **Live transcription while speaking (S/M, backlog — not urgent).** User wanted to see her spoken
+  answer appear as text in real time while talking, not just after submitting. Self-identified by
+  Anshuman as an optimization, not a blocker. Would require switching from the current
+  record-then-batch-transcribe flow to a streaming STT connection — this is the same realtime-STT
+  architecture question already flagged and deliberately deferred in `CLAUDE.md`'s Key User Feedback
+  log ("Sarvam STT realtime WebSocket — deliberately not attempted... needs a human present to decide
+  browser-direct-vs-proxied architecture"). Route to `pm` for a real spec once picked up — first live
+  feature request for the newly-built PM seat to own end-to-end.
+- **Interviewer audio didn't autoplay on iPad — had to hit replay manually (bug, fixed below).**
+
+### Fixed — iPad/iOS Safari audio-autoplay bug (`fix/ipad-audio-autoplay`)
+Root cause: `speak()` in `hooks/useTTS.ts` was first triggered from a `useEffect` on mount (TMAY
+intro) and then from post-`fetch` callbacks for every question after — none of that is a
+gesture-initiated call in Safari/iPadOS's eyes, since the actual `audio.play()` happens several ticks
+after any real tap, if there even was one. iOS Safari silently rejects `audio.play()` in that case,
+which is exactly why hitting the 🔊 Replay button (a genuine click-handler-scoped call) worked — that
+was the only `speak()` path already wrapped in a real gesture.
+
+Fix: `InterviewRoom.tsx` now gates camera/mic/TTS init behind a new "Start interview" tap screen
+(`started` state) instead of running on mount. That tap synchronously calls a new
+`unlockAudio()` (`hooks/useTTS.ts`) — plays a tiny silent WAV and resumes the `AudioContext` — before
+any camera permission request or `speak()` call happens, priming Safari's per-page autoplay-allowed
+flag for the rest of the session. `tsc --noEmit`, `eslint`, and `npm run test` (78 tests) all clean.
+**Not live-verified in a real browser** — `/interview/[sessionId]` requires Clerk auth, and this
+sandbox's Clerk SDK doesn't finish loading (same limitation noted elsewhere in `CLAUDE.md`'s Key User
+Feedback log) — needs a real iPad/iOS Safari check before calling this closed.
+
+### Still open
+- Live-transcription spec not started — PM seat hasn't been invoked for real work yet.
+- iPad autoplay fix needs a live device check (see above) before considering it verified.
+
+---
+
 ## ✅ Done (Session — 2026-08-27, Agent Org Phase 0)
 
 Built the "Autonomy Charter" agent org designed earlier in the same session (originally
